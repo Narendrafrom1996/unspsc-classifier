@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}UNSPSC Code Lookup - Upload{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1><i class="fas fa-barcode"></i> UNSPSC Code Lookup</h1>
+    <p class="hero-sub">Upload your Excel file with Manufacturer, Product, and Supplier details to get accurate UNSPSC codes</p>
+</div>
+
+<div class="upload-section">
+    <div class="card upload-card">
+        <div class="card-header">
+            <h2><i class="fas fa-cloud-upload-alt"></i> Upload Excel File</h2>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('upload_file') }}" method="POST" enctype="multipart/form-data" id="uploadForm">
+                <div class="dropzone" id="dropzone">
+                    <div class="dropzone-content">
+                        <i class="fas fa-file-excel dropzone-icon"></i>
+                        <p class="dropzone-text">Drag & drop your Excel file here</p>
+                        <p class="dropzone-hint">Supports .xlsx, .xls, .csv</p>
+                        <input type="file" name="file" id="fileInput" accept=".xlsx,.xls,.csv" class="file-input">
+                    </div>
+                    <div class="file-selected" id="fileSelected" style="display:none;">
+                        <i class="fas fa-file-excel"></i>
+                        <span id="fileName"></span>
+                        <button type="button" class="btn-remove" id="removeFile"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="submitBtn" disabled>
+                    <i class="fas fa-cogs"></i> Process & Get UNSPSC Codes
+                </button>
+            </form>
+
+            <div class="loading" id="loading" style="display:none;">
+                <div class="spinner"></div>
+                <p>Processing your file with Manufacturer & Supplier intelligence...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card info-card">
+        <div class="card-header">
+            <h2><i class="fas fa-layer-group"></i> Concrete 5-Step Classification Pipeline</h2>
+        </div>
+        <div class="card-body">
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num" style="background:#1B4F72;">1</div>
+                    <div class="step-content">
+                        <h3>Step 1: OEM & Part # Verification (Domain Gating)</h3>
+                        <p><strong>OEM Truth:</strong> Resolves manufacturer brand identity and part number to lock the allowable industrial sectors, preventing cross-domain errors.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num" style="background:#2874A6;">2</div>
+                    <div class="step-content">
+                        <h3>Step 2: Semantic Head Noun Parsing</h3>
+                        <p><strong>Object Isolation:</strong> Discards transient modifiers (colors, sizes, packaging counts) using regex word boundaries to isolate the functional head noun.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num" style="background:#3498DB;">3</div>
+                    <div class="step-content">
+                        <h3>Step 3: Supplier & Distributor SKU Cross-Check</h3>
+                        <p><strong>Secondary Verification:</strong> Cross-checks distributor catalog context and SKU when OEM data is ambiguous or unlisted.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num" style="background:#8E44AD;">4</div>
+                    <div class="step-content">
+                        <h3>Step 4: Hierarchical Taxonomy Traversal</h3>
+                        <p><strong>4-Tier Mapping:</strong> Maps through Segment (2-digit) &rarr; Family (4-digit) &rarr; Class (6-digit) &rarr; Commodity (8-digit) across 71,500+ records.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num" style="background:#27AE60;">5</div>
+                    <div class="step-content">
+                        <h3>Step 5: Strict Doubt & Rollup Policy</h3>
+                        <p><strong>Doubt Gating:</strong> No Doubt &rarr; <strong>Commodity (8-digit)</strong> &bull; Some Doubt &rarr; <strong>Class (6-digit)</strong> / Family &bull; Huge Doubt &rarr; <strong>Segment (2-digit)</strong></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="expected-columns">
+                <h3><i class="fas fa-columns"></i> Supported Columns</h3>
+                <table class="mini-table">
+                    <tr>
+                        <td><span class="badge" style="background:#1B4F72; color:white;">Priority 1</span></td>
+                        <td><strong>Manufacturer Name</strong> & <strong>Manufacturer Part #</strong></td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background:#2874A6; color:white;">Priority 2</span></td>
+                        <td><strong>Product Name</strong> (or Description, Item Name)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge" style="background:#3498DB; color:white;">Priority 3</span></td>
+                        <td><strong>Supplier Name</strong> & <strong>Supplier Part #</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileSelected = document.getElementById('fileSelected');
+const fileName = document.getElementById('fileName');
+const removeFile = document.getElementById('removeFile');
+const submitBtn = document.getElementById('submitBtn');
+const uploadForm = document.getElementById('uploadForm');
+const loading = document.getElementById('loading');
+
+dropzone.addEventListener('click', () => fileInput.click());
+
+dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('dragover');
+});
+dropzone.addEventListener('dragleave', () => {
+    dropzone.classList.remove('dragover');
+});
+dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        showFile(e.dataTransfer.files[0]);
+    }
+});
+
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) showFile(fileInput.files[0]);
+});
+
+function showFile(file) {
+    fileName.textContent = file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    dropzone.querySelector('.dropzone-content').style.display = 'none';
+    fileSelected.style.display = 'flex';
+    submitBtn.disabled = false;
+}
+
+removeFile.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.value = '';
+    dropzone.querySelector('.dropzone-content').style.display = 'flex';
+    fileSelected.style.display = 'none';
+    submitBtn.disabled = true;
+});
+
+uploadForm.addEventListener('submit', () => {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing with Mfr Priority...';
+    loading.style.display = 'flex';
+});
+</script>
+{% endblock %}

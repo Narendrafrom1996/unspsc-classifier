@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}About - UNSPSC Lookup{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1><i class="fas fa-info-circle"></i> About This Tool</h1>
+    <p class="hero-sub">UNSPSC Code Classification & Lookup System</p>
+</div>
+
+<div class="about-grid">
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="fas fa-database"></i> Database</h2>
+        </div>
+        <div class="card-body">
+            <ul class="about-list">
+                <li><strong>71,502</strong> commodity codes (8-digit level)</li>
+                <li><strong>5,313</strong> classes (6-digit level)</li>
+                <li><strong>465</strong> families (4-digit level)</li>
+                <li><strong>57</strong> segments (2-digit level)</li>
+                <li>Source: <a href="https://usa.databasesets.com/unspsc" target="_blank">usa.databasesets.com/unspsc</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="fas fa-cogs"></i> Concrete 5-Step Classification Pipeline</h2>
+        </div>
+        <div class="card-body">
+            <ul class="about-list">
+                <li><strong>Step 1: OEM & Part # Domain Gating:</strong> Analyzes Manufacturer Name and Part # to lock allowable industrial sectors (e.g. Apparel Segment 53, Medical Segment 42, Lab Equipment Segment 41, Tools Segment 27).</li>
+                <li><strong>Step 2: Semantic Head Noun Extraction:</strong> Strips transient attributes (colors, sizes, packaging counts) using strict word boundaries to identify the true functional object (e.g. T-shirt, Catheter, Syringe, Socket).</li>
+                <li><strong>Step 3: Supplier & SKU Cross-Check:</strong> Uses distributor context and catalog part numbers for secondary verification when OEM data is ambiguous.</li>
+                <li><strong>Step 4: Hierarchical Taxonomy Mapping:</strong> Evaluates across Segment (2-digit), Family (4-digit), Class (6-digit), and Commodity (8-digit).</li>
+                <li><strong>Step 5: Strict Doubt & Rollup Policy:</strong>
+                    <ul>
+                        <li><span class="badge badge-high">No Doubt</span> — Exact match, assigned to <strong>Commodity (8-digit)</strong></li>
+                        <li><span class="badge badge-medium">Some Doubt</span> — Subtype/variant ambiguity, rolled up to <strong>Class (6-digit)</strong> or <strong>Family (4-digit)</strong></li>
+                        <li><span class="badge badge-low">Huge Doubt</span> — Vague or conflicting signals, rolled up to <strong>Segment (2-digit)</strong></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="fas fa-sitemap"></i> What is UNSPSC?</h2>
+        </div>
+        <div class="card-body">
+            <p>The <strong>United Nations Standard Products and Services Code</strong> (UNSPSC) is a hierarchical taxonomy for classifying products and services. It has 4 levels:</p>
+            <ol class="about-list">
+                <li><strong>Segment</strong> (2 digits) — Broadest category (e.g., "Defense and Law Enforcement...")</li>
+                <li><strong>Family</strong> (4 digits) — Major grouping (e.g., "Personal safety and protection")</li>
+                <li><strong>Class</strong> (6 digits) — Sub-grouping (e.g., "Safety apparel")</li>
+                <li><strong>Commodity</strong> (8 digits) — Specific product (e.g., "Protective gloves")</li>
+            </ol>
+        </div>
+    </div>
+</div>
+{% endblock %}

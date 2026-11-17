@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}UNSPSC Results - {{ original_file }}{% endblock %}
+
+{% block content %}
+<div class="results-header">
+    <h1><i class="fas fa-check-circle"></i> UNSPSC Mapping Complete</h1>
+    <p>File: <strong>{{ original_file }}</strong> &bull; Evaluated by Manufacturer, Product & Supplier Priority</p>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-list-ol"></i></div>
+        <div class="stat-value">{{ total }}</div>
+        <div class="stat-label">Total Items</div>
+    </div>
+    <div class="stat-card stat-high">
+        <div class="stat-icon"><i class="fas fa-check-double" style="color:#27AE60;"></i></div>
+        <div class="stat-value">{{ no_doubt }}</div>
+        <div class="stat-label">No Doubt (Commodity)</div>
+    </div>
+    <div class="stat-card stat-medium">
+        <div class="stat-icon"><i class="fas fa-question-circle" style="color:#F39C12;"></i></div>
+        <div class="stat-value">{{ some_doubt }}</div>
+        <div class="stat-label">Some Doubt (Class/Family)</div>
+    </div>
+    <div class="stat-card stat-low">
+        <div class="stat-icon"><i class="fas fa-exclamation-triangle" style="color:#E74C3C;"></i></div>
+        <div class="stat-value">{{ huge_doubt }}</div>
+        <div class="stat-label">Huge Doubt (Segment)</div>
+    </div>
+    <div class="stat-card stat-none">
+        <div class="stat-icon"><i class="fas fa-times-circle"></i></div>
+        <div class="stat-value">{{ no_match }}</div>
+        <div class="stat-label">No Match</div>
+    </div>
+    <div class="stat-card stat-time">
+        <div class="stat-icon"><i class="fas fa-clock"></i></div>
+        <div class="stat-value">{{ processing_time }}s</div>
+        <div class="stat-label">Processing Time</div>
+    </div>
+</div>
+
+<div class="alert alert-info" style="background:#EBF5FB; border:1px solid #AED6F1; color:#1B4F72; border-radius:8px; padding:12px 18px; margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <div>
+        <i class="fas fa-industry" style="margin-right:8px; font-size:1.1rem; color:#2980B9;"></i>
+        <strong>Evaluation Order Applied:</strong>
+        <span style="margin-left:6px;">1. Manufacturer Name & Part # &bull; 2. Product Name &bull; 3. Supplier Name & Part #</span>
+    </div>
+    <div>
+        <span class="badge badge-high" style="margin-right:4px;">No Doubt = Commodity</span>
+        <span class="badge badge-medium" style="margin-right:4px;">Some Doubt = Class/Family</span>
+        <span class="badge badge-low">Huge Doubt = Segment</span>
+    </div>
+</div>
+
+<div class="actions-bar">
+    <a href="{{ url_for('download_file', filename=output_file) }}" class="btn btn-success btn-lg">
+        <i class="fas fa-file-excel"></i> Download Excel (with Mfr & Google Links)
+    </a>
+    <a href="{{ url_for('index') }}" class="btn btn-outline">
+        <i class="fas fa-upload"></i> Upload Another File
+    </a>
+</div>
+
+<div class="card results-card">
+    <div class="card-header">
+        <h2><i class="fas fa-table"></i> Results Preview</h2>
+        <div class="filter-bar">
+            <input type="text" id="filterInput" placeholder="Filter products, mfr, or codes..." class="filter-input">
+            <select id="confidenceFilter" class="filter-select">
+                <option value="all">All Doubt Levels</option>
+                <option value="No Doubt">No Doubt (Commodity)</option>
+                <option value="Some Doubt">Some Doubt (Class/Family)</option>
+                <option value="Huge Doubt">Huge Doubt (Segment)</option>
+                <option value="None">No Match</option>
+            </select>
+            <button id="toggleHierarchyBtn" class="btn btn-outline" style="padding:6px 14px; font-size:0.85rem;">
+                <i class="fas fa-layer-group"></i> Toggle Full Hierarchy
+            </button>
+        </div>
+    </div>
+    <div class="table-wrapper">
+        <table class="results-table" id="resultsTable">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Product Name</th>
+                    <th>Manufacturer</th>
+                    <th>Mfr Part #</th>
+                    <th>Supplier</th>
+                    <th>Assigned UNSPSC Code</th>
+                    <th>Assigned Category</th>
+                    <th>Level</th>
+                    <th>Doubt Level</th>
+                    <th>Concrete Steps Taken</th>
+                    <th>Verify</th>
+                    <th class="extra-col" style="display:none;">Commodity Name</th>
+                    <th class="extra-col" style="display:none;">Class</th>
+                    <th class="extra-col" style="display:none;">Family</th>
+                    <th class="extra-col" style="display:none;">Segment</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                {% set conf_class = 'high' if r.confidence in ('No Doubt', 'High') else 'medium' if r.confidence in ('Some Doubt', 'Medium') else 'low' if r.confidence in ('Huge Doubt', 'Low') else 'none' %}
+                <tr class="conf-{{ conf_class }}" data-confidence="{{ r.confidence }}">
+                    <td>{{ r.sno }}</td>
+                    <td class="product-col" title="{{ r.product_name }}">{{ r.product_name }}</td>
+                    <td style="font-size:0.82rem; color:#1B4F72; font-weight:500;">{{ r.mfr_name or '-' }}</td>
+                    <td style="font-size:0.82rem; font-family:monospace; color:#2C3E50;">{{ r.mfr_part or '-' }}</td>
+                    <td style="font-size:0.82rem; color:#5D6D7E;">{{ r.supplier_name or '-' }}</td>
+                    <td class="code-col"><code>{{ r.assigned_code }}</code></td>
+                    <td style="font-weight:600; color:#1A5276;">{{ r.assigned_category }}</td>
+                    <td>
+                        <span class="badge" style="background:#EAECEE; color:#2C3E50; font-size:0.75rem;">
+                            {{ r.assigned_level }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge badge-{{ conf_class }}">
+                            {{ r.confidence }}
+                        </span>
+                    </td>
+                    <td style="font-size:0.76rem; line-height:1.35; color:#34495E; max-width:320px;" title="{{ r.step_audit_trail }}">
+                        <div style="margin-bottom:2px;">
+                            <span class="badge" style="background:#D4E6F1; color:#154360; font-size:0.68rem; padding:2px 5px;">Step 1 OEM</span>
+                            <span style="color:#2C3E50;">{{ r.step1_detail }}</span>
+                        </div>
+                        <div style="margin-bottom:2px;">
+                            <span class="badge" style="background:#FCF3CF; color:#7D6608; font-size:0.68rem; padding:2px 5px;">Step 2 Noun</span>
+                            <span style="color:#2C3E50;">{{ r.step2_detail }}</span>
+                        </div>
+                        <div>
+                            <span class="badge" style="background:#E8F8F5; color:#0E6251; font-size:0.68rem; padding:2px 5px;">Step 5 Rollup</span>
+                            <span style="color:#2C3E50;">{{ r.step5_detail }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <a href="{{ r.google_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding:4px 10px; font-size:0.78rem; text-decoration:none; display:inline-flex; align-items:center; gap:5px; border-radius:6px;" title="Verify on Google (Manufacturer & Product)">
+                            <i class="fab fa-google" style="color:#4285F4;"></i> Verify
+                        </a>
+                    </td>
+                    <td class="extra-col" style="display:none;">{{ r.commodity_name }}</td>
+                    <td class="extra-col" style="display:none;">{{ r.class_name }}</td>
+                    <td class="extra-col" style="display:none;">{{ r.family_name }}</td>
+                    <td class="extra-col" style="display:none;">{{ r.segment_name }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const filterInput = document.getElementById('filterInput');
+const confidenceFilter = document.getElementById('confidenceFilter');
+const tableBody = document.querySelector('#resultsTable tbody');
+const rows = tableBody.querySelectorAll('tr');
+const toggleBtn = document.getElementById('toggleHierarchyBtn');
+let showHierarchy = false;
+
+function filterRows() {
+    const text = filterInput.value.toLowerCase();
+    const conf = confidenceFilter.value;
+
+    rows.forEach(row => {
+        const matchText = row.textContent.toLowerCase().includes(text) || text === '';
+        const matchConf = conf === 'all' || row.dataset.confidence === conf;
+        row.style.display = matchText && matchConf ? '' : 'none';
+    });
+}
+
+filterInput.addEventListener('input', filterRows);
+confidenceFilter.addEventListener('change', filterRows);
+
+toggleBtn.addEventListener('click', () => {
+    showHierarchy = !showHierarchy;
+    document.querySelectorAll('.extra-col').forEach(el => {
+        el.style.display = showHierarchy ? '' : 'none';
+    });
+    toggleBtn.innerHTML = showHierarchy ?
+        '<i class="fas fa-compress-alt"></i> Hide Full Hierarchy' :
+        '<i class="fas fa-layer-group"></i> Toggle Full Hierarchy';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.git/
+.gitignore
+uploads/*
+downloads/*
+!uploads/.gitkeep
+!downloads/.gitkeep
+test_mfr_upload.xlsx
+test_web_enrich.py
