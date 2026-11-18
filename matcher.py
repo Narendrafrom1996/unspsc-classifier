@@ -309,13 +309,156 @@ def clean_procurement_text(text: str) -> Dict[str, Any]:
 
 
 # =====================================================================
+# COMPLETE PRODUCT NAME EVALUATION & GLOBAL CANDIDATE SCORER
+# (User Directive: Read complete product name to decide Category & UNSPSC)
+# =====================================================================
+
+COMMON_PROCUREMENT_ABBREVIATIONS = [
+    (r'\bcont\.?\s*sol\.?\b', 'control solution'),
+    (r'\bsol\.?\b', 'solution'),
+    (r'\bcont\.?\b', 'control'),
+    (r'\breplc\.?\b', 'replacement'),
+    (r'\brepl\.?\b', 'replacement'),
+    (r'\borg\.?\b', 'organizer'),
+    (r'\borgan\.?\b', 'organizer'),
+    (r'\bf/\s*', 'for '),
+    (r'\bw/\s*', 'with '),
+    (r'\badlt\.?\b', 'adult'),
+    (r'\bped\.?\b', 'pediatric'),
+    (r'\bpolyethyl\.?\b', 'polyethylene'),
+    (r'\bplycarbo\.?\b', 'polycarbonate'),
+    (r'\bstd\.?\b', 'standard'),
+    (r'\bsurg\.?\b', 'surgical'),
+    (r'\bdiag\.?\b', 'diagnostic'),
+    (r'\bprecaut\.?\b', 'precaution'),
+    (r'\bcal\.?\b', 'calibration'),
+    (r'\bcntr\.?\b', 'control'),
+    (r'\bctrl\.?\b', 'control'),
+    (r'\bdisp\.?\b', 'dispenser'),
+    (r'\bpkg\.?\b', 'package'),
+    (r'\bmed\.?\b', 'medical'),
+    (r'\bequip\.?\b', 'equipment'),
+    (r'\binst\.?\b', 'instrument'),
+]
+
+def expand_procurement_abbreviations(text: str) -> str:
+    s = text or ''
+    for pat, rep in COMMON_PROCUREMENT_ABBREVIATIONS:
+        s = re.sub(pat, rep, s, flags=re.IGNORECASE)
+    return s
+
+COMPLETE_NAME_RULES = [
+    # Posters and signage
+    (r'\b(poster|sign|chart)\b.*\b(safety|protect\w*|hazard|ppe|fall|compliance|first\s*aid|workplace)\b', '55121736', 'Workplace safety sign or poster'),
+    (r'\b(safety|protect\w*|hazard|ppe|fall|compliance|first\s*aid|workplace)\b.*\b(poster|sign|chart)\b', '55121736', 'Workplace safety sign or poster'),
+
+    # Training Kits vs Videos
+    (r'\b(dvd|video|training|safety|ppe|fall\s+protection).*\bkit\b', '46211501', 'Workplace safety training kit'),
+    (r'\bkit\b.*\b(dvd|video|training|safety|ppe|fall\s+protection)\b', '46211501', 'Workplace safety training kit'),
+
+    # Personal Protection Organizers and Dispensers
+    (r'\b(organizer|dispenser)\b.*\b(isolation|protective|ppe|safety|glove|mask|gown)\b', '46181553', 'Protective wear dispenser'),
+    (r'\b(isolation|protective|ppe|safety|glove|mask|gown)\b.*\b(organizer|dispenser)\b', '46181553', 'Protective wear dispenser'),
+
+    # Face Masks (Medical / Surgical vs Industrial)
+    (r'\b(face\s*mask|mask\s*face|surgical\s*mask|procedure\s*mask|isolation\s*mask|tie\s*band)\b', '42131606', 'Medical staff isolation or surgical masks'),
+
+    # Desiccator / Environmental Conditioning accessories
+    (r'\b(dry\s*tr|dry\s*trend|drying\s*train|desiccator)\b.*\b(column|accessory|accessories)\b', '41103414', 'Laboratory environmental conditioning equipment accessories'),
+    (r'\bcolumn\b.*\b(dry\s*tr|dry\s*trend|drying\s*train|desiccator)\b', '41103414', 'Laboratory environmental conditioning equipment accessories'),
+
+    # Chin guard / face shield accessories
+    (r'\b(chin\s*guard|chin\s*protector|chin\s*cp8|clear\s*chin)\b', '46181707', 'Facial shields parts or accessories'),
+
+    # Chemistry and Reference Chemicals
+    (r'\bforskolin\b', '12352212', 'Terpenoids'),
+    (r'\bcyclocitral\b', '12352212', 'Terpenoids'),
+    (r'\b(dodecanoic\s+acid|lauric\s+acid)\b', '12352106', 'Organic acids or its substitutes'),
+    (r'\b(bromo.*dioxane|bronidox)\b', '12352101', 'Organic halogenated compounds'),
+    (r'\bvitamin\s+a\s+palmitate\b', '50501501', 'Vitamin A supplement'),
+    (r'\b(tert-butyl-4-methoxyphenol|butylated\s+hydroxyanisole|bha)\b', '12162203', 'Butylated hydroxyanisole'),
+
+    # Medical Equipment, Linens & Consumables
+    (r'\b(radio\s+soldering\s+kit|student\s+soldering|fm\s+radio\s+soldering)\b', '60104702', 'Student soldering kit'),
+    (r'\b(cleanroom\s+lotion|pregloving\s+lotion|hand\s+lotion|skin\s+lotion)\b', '53131607', 'Hand or body lotions'),
+    (r'\b(acu-punch|biopsy\s+punch|dermal\s+punch)\b', '42293506', 'Biopsy punch'),
+    (r'\burinal\b.*\b(drain|drainage|bag)\b', '42142704', 'Urinary drainage bags or meters'),
+    (r'\burinal\b', '42141607', 'Patient urinals for general use'),
+    (r'\bmineral\s+oil\b', '51171903', 'Mineral oil'),
+    (r'\b(pillowcase|pillow\s+case|pillow\s+protector)\b', '42132105', 'Patient care beddings or linens'),
+    (r'\b(ear\s*specul.*dispenser|dispenser.*ear\s*specul)\b', '42182006', 'Scopes and specula accessories'),
+    (r'\b(ear\s+tip|earwash|ear\s+wash)\b', '42292700', 'Medical training and education supplies'),
+    (r'\b(plastic\s+mug|drinking\s+mug|patient\s+mug|mug.*plastic)\b', '48101905', 'Food service cups or mugs'),
+    (r'\b(control\s+solution|cont\.\s+sol|accutrend)\b', '41116107', 'Control solutions or control materials'),
+    (r'\b(head\s*immobilizer|immobilizer.*head)\b', '42171608', 'Emergency medical services head immobilizers'),
+    (r'\b(pill\s*(reminder|organizer)|reminder.*pill|pill.*7\s*day)\b', '42212202', 'Pill organizers for the physically challenged'),
+    (r'\b(teaspoon|tablespoon|plastic\s*fork|plastic\s*spoon|disposable\s*flatware|wrapped.*cutlery)\b', '52151503', 'Domestic disposable flatware'),
+    (r'\b(deodorant|antiperspirant)\b', '53131606', 'Deodorants'),
+    (r'\b(lip\s*balm|chapstick)\b', '53131630', 'Lip balm'),
+]
+
+def score_candidate_against_complete_name(candidate_row, full_text_lower, allowed_segments=None) -> float:
+    """
+    Evaluates candidate commodity record against the COMPLETE product description.
+    candidate_row: (comm_code, comm_name, class_code, class_name, fam_code, fam_name, seg_code, seg_name)
+    """
+    comm_code, comm_name, class_code, class_name, fam_code, fam_name, seg_code, seg_name = candidate_row[:8]
+    
+    # Financial / Service segments (64-94) strictly blocked
+    seg_prefix = int(seg_code[:2])
+    if seg_prefix > 60:
+        return -100.0
+
+    score = 0.0
+    c_lower = comm_name.lower()
+
+    # Exact full commodity phrase match in product text
+    if c_lower in full_text_lower:
+        score += 100.0
+
+    # Commodity words overlap
+    c_words = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', c_lower).split() if len(w) > 2 and w not in GENERIC_STOP_WORDS]
+    if c_words:
+        matched_c = sum(1 for w in c_words if w in full_text_lower or (w.endswith('s') and w[:-1] in full_text_lower))
+        ratio = matched_c / len(c_words)
+        score += ratio * 60.0
+        if ratio == 1.0:
+            score += 25.0
+
+    # Class words overlap
+    cl_words = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', class_name.lower()).split() if len(w) > 2 and w not in GENERIC_STOP_WORDS]
+    if cl_words:
+        matched_cl = sum(1 for w in cl_words if w in full_text_lower)
+        score += (matched_cl / len(cl_words)) * 15.0
+
+    # Family words overlap
+    f_words = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', fam_name.lower()).split() if len(w) > 2 and w not in GENERIC_STOP_WORDS]
+    if f_words:
+        matched_f = sum(1 for w in f_words if w in full_text_lower)
+        score += (matched_f / len(f_words)) * 10.0
+
+    # Sector consistency bonus/penalty
+    if allowed_segments:
+        if seg_code[:2] in allowed_segments:
+            score += 25.0
+        else:
+            score -= 15.0
+
+    # Contradiction penalties
+    if ('veterinary' in c_lower or 'animal' in c_lower) and ('veterinary' not in full_text_lower and 'animal' not in full_text_lower):
+        score -= 40.0
+
+    return score
+
+
+# =====================================================================
 # STEP 3 & 4: COMPREHENSIVE DOMAIN TAXONOMY (PPE, Safety, Lab, Medical, Tools, IT)
 # =====================================================================
 
 HEAD_NOUN_TAXONOMY = [
     # Chromatography & Analytical
     (r'\b(speedvac|vacuum\s+concentrator)\b', '41103310', 'Concentrators'),
-    (r'\b(ph\s+bench\s+meter|ph\s+meter|accumet)\b', '41115603', 'pH meters'),
+    (r'\b(ph\s+bench(\s*top)?\s*meter|ph\s+meter|accumet)\b', '41115603', 'pH meters'),
     (r'\b(guard\s+cartridges?|guard\s+columns?|securityguard)\b', '41115730', 'High pressure liquid chromatography HPLC guard column'),
     (r'\b(hplc\s+columns?|lc\s+columns?|tskgel|polysep|xtimate)\b', '41115709', 'High pressure liquid chromatography HPLC columns'),
     (r'\b(spe\s+(columns?|plates?)|extraction\s+plate|oasis\s+max|clean-up\s+polyimine|aflatest)\b', '41115712', 'Solid phase extraction SPE columns'),
@@ -560,8 +703,8 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('42311708', 'Medical and surgical adherent tapes for general use', 'Medical and surgical adherent tapes and related products for specialty use', 'Wound care products')
     if any(k in s for k in ['luer lock', 'syringe,luer', 'syringe, luer', 'hypodermic syringe', 'plasti-pak']):
         return ('42142608', 'Medical syringe without needle', 'Syringes and accessories', 'Patient care and treatment products and supplies')
-    if any(k in s for k in ['column for dry', 'drying column', 'dry tr']):
-        return ('41115709', 'High pressure liquid chromatography HPLC columns', 'Chromatographic measuring instruments and accessories', 'Measuring and observing and testing instruments')
+    if any(k in s for k in ['column for dry', 'drying column', 'dry tr', 'dry trend']):
+        return ('41103414', 'Laboratory environmental conditioning equipment accessories', 'Laboratory environmental conditioning equipment', 'Laboratory and scientific equipment')
 
     # Janitorial & Facilities
     if any(k in s for k in ['trash can liner', 'trash bag', 'garbage bag', 'can liner', 'refuse bag']):
@@ -606,18 +749,18 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('42181602', 'Blood pressure cuffs', 'Patient exam and monitoring products', 'Medical facility products')
     if 'dissection' in s:
         return ('60104101', 'Dissection instruments or kits', 'Biology and earth science', 'Musical Instruments and Games and Toys and Arts and Crafts and Educational Equipment and Materials and Accessories and Supplies')
-    if 'radio soldering kit' in s:
-        return ('23271712', 'Welding or soldering kit', 'Welding and soldering and brazing accessories', 'Industrial Manufacturing and Processing Machinery and Accessories')
+    if 'radio soldering kit' in s or 'student soldering' in s:
+        return ('60104702', 'Student soldering kit', 'Vocational training equipment', 'Musical Instruments and Games and Toys and Arts and Crafts and Educational Equipment and Materials and Accessories and Supplies')
     if 'influenza' in s:
         return ('41116129', 'Influenza rapid test kits', 'Clinical and diagnostic analyzer reagents and test kits', 'Measuring and observing and testing instruments')
     if 'statue' in s or 'figurine' in s:
         return ('56141703', 'Metal figurine or statuette', 'Metal adornments', 'Decorative adornments')
     if 'c-clamp' in s:
         return ('27112102', 'C clamps', 'Clamping tools', 'Tools and General Machinery')
+    if ('training' in s or 'safety' in s or 'dvd' in s or 'video' in s) and 'kit' in s:
+        return ('46211501', 'Workplace safety training kit', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
     if 'dvd' in s or 'video' in s:
         return ('46211502', 'Workplace safety training video', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
-    if 'training' in s and 'kit' in s:
-        return ('46211501', 'Workplace safety training kit', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
     if 'safety flip chart' in s or 'training manual' in s or 'booklet' in s or 'compliance manual' in s:
         return ('46211503', 'Workplace safety training manual or handbook', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
     if 'cd rom' in s or 'educational software' in s:
@@ -820,6 +963,10 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
     cleaned = info['cleaned']
     primary = info['primary']
 
+    # Expand common procurement abbreviations across the COMPLETE product name
+    full_expanded = expand_procurement_abbreviations(p_orig)
+    full_lower = full_expanded.lower()
+
     # -----------------------------------------------------------------
     # STEP 1: Check Manufacturer Name - What kind of things they manufacture
     # -----------------------------------------------------------------
@@ -885,11 +1032,25 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             pass
 
     # -----------------------------------------------------------------
+    # STEP 2.5: COMPLETE PRODUCT NAME RULES (Evaluates Entire String First)
+    # -----------------------------------------------------------------
+    if not best_match:
+        for pat, code, cat_name in COMPLETE_NAME_RULES:
+            if re.search(pat, full_lower, re.IGNORECASE) or re.search(pat, p_orig, re.IGNORECASE):
+                row = get_item_by_code(code)
+                if row:
+                    best_match = (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], 0.0)
+                    confidence = "No Doubt"
+                    identified_type = row[1]
+                    match_method = f"Complete Product Name Rule '{cat_name}' (Exact 8-Digit Commodity)"
+                    break
+
+    # -----------------------------------------------------------------
     # STEP 3 & 4: HEAD NOUN TAXONOMY ISOLATION
     # -----------------------------------------------------------------
     if not best_match:
         for pat, code, cat_name in HEAD_NOUN_TAXONOMY:
-            if re.search(pat, primary, re.IGNORECASE) or re.search(pat, cleaned, re.IGNORECASE) or re.search(pat, p_orig, re.IGNORECASE):
+            if re.search(pat, full_lower, re.IGNORECASE) or re.search(pat, p_orig, re.IGNORECASE) or re.search(pat, primary, re.IGNORECASE) or re.search(pat, cleaned, re.IGNORECASE):
                 row = get_item_by_code(code)
                 if row:
                     best_match = (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], 0.0)
@@ -902,7 +1063,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
     # STEP 3 & 4: GROUND-TRUTH DOMAIN TAXONOMY (PPE, Face, Fall, Cabinets, Medical)
     # -----------------------------------------------------------------
     if not best_match:
-        for candidate_text in [primary, cleaned, p_orig]:
+        for candidate_text in [full_expanded, p_orig, primary, cleaned]:
             domain_res = extract_batch2_domain_mapping(candidate_text)
             if domain_res:
                 code, cname, clname, fname = domain_res
@@ -915,23 +1076,30 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                     break
 
     # -----------------------------------------------------------------
-    # STEP 4: HIGH-PRECISION FTS5 ACROSS 71,502 RECORDS
+    # STEP 4: COMPLETE PRODUCT NAME FTS5 EVALUATION & HOLISTIC CANDIDATE SCORING ACROSS 71,502 RECORDS
     # -----------------------------------------------------------------
     if not best_match:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
 
-        # Tokenize primary clause
+        # Tokenize primary clause and full expanded product name
         s_clean = primary.lower()
+        full_clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', full_lower)
         if m_name and len(m_name) > 2:
-            s_clean = re.sub(rf'\b{re.escape(m_name.lower().strip())}\b', ' ', s_clean)
+            m_low = m_name.lower().strip()
+            s_clean = re.sub(rf'\b{re.escape(m_low)}\b', ' ', s_clean)
+            full_clean = re.sub(rf'\b{re.escape(m_low)}\b', ' ', full_clean)
 
-        tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', s_clean).split() 
-                  if len(w) > 2 and w not in GENERIC_STOP_WORDS]
+        primary_tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', s_clean).split() 
+                          if len(w) > 2 and w not in GENERIC_STOP_WORDS]
+        full_tokens = [w for w in full_clean.split() 
+                       if len(w) > 2 and w not in GENERIC_STOP_WORDS]
 
-        if tokens:
-            # 4A. Exact phrase on Primary clause
-            phrase_q = f'"{ " ".join(tokens) }"'
+        candidate_dict = {}
+
+        # 4A. Exact phrase on Primary clause
+        if primary_tokens:
+            phrase_q = f'"{ " ".join(primary_tokens) }"'
             try:
                 c.execute("""
                     SELECT commodity_code, commodity_name, class_code, class_name,
@@ -939,21 +1107,19 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                     FROM unspsc_fts
                     WHERE unspsc_fts MATCH ?
                     ORDER BY rank
-                    LIMIT 20;
+                    LIMIT 25;
                 """, (phrase_q,))
-                candidates = c.fetchall()
-                # Gating: filter out service & financial segments (64-94) and apply domain constraints if any
-                filtered = [row for row in candidates if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments)]
-                if filtered:
-                    best_match = filtered[0]
-                    confidence = "No Doubt"
-                    match_method = f"Step 4: Primary Phrase '{phrase_q}' across 70k database"
+                for row in c.fetchall():
+                    if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments):
+                        candidate_dict[row[0]] = row
             except Exception:
                 pass
 
-            # 4B. Compound salient noun tokens
-            if not best_match and len(tokens) >= 2:
-                comp_q = f'"{tokens[0]}" AND "{tokens[1]}"'
+        # 4B. Compound salient noun tokens from primary and complete name
+        search_tokens = primary_tokens if len(primary_tokens) >= 2 else full_tokens
+        if len(search_tokens) >= 2:
+            for i in range(min(len(search_tokens) - 1, 5)):
+                comp_q = f'"{search_tokens[i]}" AND "{search_tokens[i+1]}"'
                 try:
                     c.execute("""
                         SELECT commodity_code, commodity_name, class_code, class_name,
@@ -961,38 +1127,51 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                         FROM unspsc_fts
                         WHERE unspsc_fts MATCH ?
                         ORDER BY rank
-                        LIMIT 20;
+                        LIMIT 15;
                     """, (comp_q,))
-                    candidates = c.fetchall()
-                    filtered = [row for row in candidates if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments)]
-                    if filtered:
-                        best_match = filtered[0]
-                        confidence = "No Doubt"
-                        match_method = f"Step 4: Compound Noun '{tokens[0]} {tokens[1]}' across 70k database"
+                    for row in c.fetchall():
+                        if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments):
+                            candidate_dict[row[0]] = row
                 except Exception:
                     pass
 
-            # 4C. First salient token query
-            if not best_match and tokens:
-                try:
-                    c.execute("""
-                        SELECT commodity_code, commodity_name, class_code, class_name,
-                               family_code, family_name, segment_code, segment_name, rank
-                        FROM unspsc_fts
-                        WHERE unspsc_fts MATCH ?
-                        ORDER BY rank
-                        LIMIT 20;
-                    """, (f'"{tokens[0]}"',))
-                    candidates = c.fetchall()
-                    filtered = [row for row in candidates if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments)]
-                    if filtered:
-                        best_match = filtered[0]
-                        confidence = "Some Doubt"
-                        match_method = f"Step 4: Salient Token '{tokens[0]}' across 70k database"
-                except Exception:
-                    pass
+        # 4C. Salient individual tokens evaluated from full product description
+        for token in full_tokens[:8]:
+            try:
+                c.execute("""
+                    SELECT commodity_code, commodity_name, class_code, class_name,
+                           family_code, family_name, segment_code, segment_name, rank
+                    FROM unspsc_fts
+                    WHERE unspsc_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT 10;
+                """, (f'"{token}"',))
+                for row in c.fetchall():
+                    if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments):
+                        candidate_dict[row[0]] = row
+            except Exception:
+                pass
 
         conn.close()
+
+        # Holistic candidate scoring against the entire product description
+        if candidate_dict:
+            scored_candidates = []
+            for cand in candidate_dict.values():
+                score = score_candidate_against_complete_name(cand, full_lower, allowed_segments)
+                scored_candidates.append((score, cand))
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            best_score, best_cand = scored_candidates[0]
+            if best_score >= 35.0:
+                best_match = best_cand
+                confidence = "No Doubt"
+                identified_type = best_cand[1]
+                match_method = f"Complete Name Holistic Match '{best_cand[1]}' (Score: {best_score:.1f})"
+            elif best_score >= 15.0:
+                best_match = best_cand
+                confidence = "Some Doubt"
+                identified_type = best_cand[1]
+                match_method = f"Complete Name Scoring '{best_cand[1]}' (Score: {best_score:.1f})"
 
     # -----------------------------------------------------------------
     # STEP 4.5: DEEP DOUBT RESOLUTION (When item is unresolved OR user explicitly enabled AI)
