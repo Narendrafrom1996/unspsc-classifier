@@ -365,6 +365,12 @@ HEAD_NOUN_TAXONOMY = [
     (r'\b(foley(\s+catheter)?|tray,\s*foley)\b', '42142702', 'Foley catheters'),
 
     # Chemicals & Solvents
+    (r'\b(compliance\s+manual|training\s+manual|safety\s+manual)\b', '46211503', 'Workplace safety training manual or handbook'),
+    (r'\b([a-z0-9\-]*phenylazo[a-z0-9\-]*|azo\s+dye)\b', '12352124', 'Azo compounds or its substitutes'),
+    (r'\b([a-z0-9\-]+lactone)\b', '12352108', 'Esters or its substitutes'),
+    (r'\b(cyclohexanol|[a-z0-9\-]+anol|[a-z0-9\-]+enol)\b', '12352104', 'Alcohols or its substitutes'),
+    (r'\b([a-z0-9\-]+citral|[a-z0-9\-]+anal|[a-z0-9\-]+enal)\b', '12352114', 'Aldehydes or its substitutes'),
+    (r'\b(forskolin|emodin|hypericin)\b', '12352115', 'Ketones or quinones or its substitutes'),
     (r'\b(methanol|methyl\s+alcohol)\b', '12352104', 'Alcohols or its substitutes'),
     (r'\b(ethanol|ethyl\s+alcohol)\b', '12352104', 'Alcohols or its substitutes'),
     (r'\b(isopropanol|isopropyl\s+alcohol|2-propanol|ipa)\b', '12352104', 'Alcohols or its substitutes'),
@@ -377,6 +383,7 @@ HEAD_NOUN_TAXONOMY = [
     (r'\b(dimethyl\s+sulfoxide|dmso)\b', '12352113', 'Thioethers'),
     (r'\b(sodium\s+hydroxide|caustic\s+soda)\b', '12352316', 'Sodium hydroxide'),
     (r'\b(undecanal)\b', '12352114', 'Aldehydes or its substitutes'),
+    (r'\b(vitamin\s+[a-z]|palmitate|retinol)\b', '51241929', 'Vitamin a/vitamin d/vitamin e'),
     (r'\b(tetradecanoic\s+acid|malonic\s+acid|formic\s+acid|acetic\s+acid|trifluoroacetic\s+acid|tfa)\b', '12352106', 'Organic acids or its substitutes'),
     (r'\b(bezafibrate)\b', '51321901', 'Bezafibrate'),
     (r'\b(hydrofluoric\s+acid|hydrochloric\s+acid|sulfuric\s+acid|nitric\s+acid)\b', '12352301', 'Inorganic acids'),
@@ -611,7 +618,7 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('46211502', 'Workplace safety training video', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
     if 'training' in s and 'kit' in s:
         return ('46211501', 'Workplace safety training kit', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
-    if 'safety flip chart' in s or 'training manual' in s or 'booklet' in s:
+    if 'safety flip chart' in s or 'training manual' in s or 'booklet' in s or 'compliance manual' in s:
         return ('46211503', 'Workplace safety training manual or handbook', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
     if 'cd rom' in s or 'educational software' in s:
         return ('43232505', 'Multi-media educational software', 'Educational or reference software', 'Software')
