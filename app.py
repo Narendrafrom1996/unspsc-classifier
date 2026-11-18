@@ -36,13 +36,13 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def process_excel(filepath):
+def process_excel(filepath, api_key='', ai_provider=''):
     """
     Read an uploaded Excel file, detecting:
     - Manufacturer Name & Part #
     - Product Name
     - Supplier Name & Part #
-    Evaluates in strict priority order.
+    Evaluates in strict priority order with optional AI assistance and 70k database verification.
     """
     wb = openpyxl.load_workbook(filepath, data_only=True)
     ws = wb.active
@@ -124,7 +124,9 @@ def process_excel(filepath):
             mfr_name=mfr_name,
             mfr_part=mfr_part,
             supplier_name=supplier_name,
-            supplier_part=supplier_part
+            supplier_part=supplier_part,
+            api_key=api_key,
+            ai_provider=ai_provider
         )
 
         results.append({
@@ -268,9 +270,12 @@ def upload_file():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
     file.save(filepath)
 
+    ai_provider = request.form.get('ai_provider', '').strip()
+    ai_key = request.form.get('ai_key', '').strip()
+
     try:
         start_time = time.time()
-        results = process_excel(filepath)
+        results = process_excel(filepath, api_key=ai_key, ai_provider=ai_provider)
         processing_time = round(time.time() - start_time, 2)
 
         if not results:

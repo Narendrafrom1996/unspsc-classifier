@@ -28,6 +28,28 @@
                     </div>
                 </div>
 
+                <div class="ai-config-box" style="margin: 1.2rem 0; padding: 14px 16px; background: #F8F9F9; border: 1px solid #D5D8DC; border-radius: 8px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+                        <label style="font-weight:600; color:#1B4F72; font-size:0.9rem; display:flex; align-items:center; gap:6px;">
+                            <i class="fas fa-robot" style="color:#2980B9;"></i> AI Assistance (Gemini / DeepSeek / ChatGPT)
+                        </label>
+                        <span style="font-size:0.75rem; color:#7F8C8D;">Optional &bull; Cross-referenced with 70k list</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1.5fr; gap: 10px;">
+                        <select name="ai_provider" class="form-control" style="padding: 7px 10px; font-size:0.85rem; border:1px solid #BDC3C7; border-radius:6px; background:white;">
+                            <option value="">Local FTS5 Engine (Default - Free)</option>
+                            <option value="gemini">Google Gemini (Free Tier)</option>
+                            <option value="deepseek">DeepSeek AI</option>
+                            <option value="groq">Groq Llama-3 (Free Tier)</option>
+                            <option value="openai">OpenAI ChatGPT</option>
+                        </select>
+                        <input type="password" name="ai_key" placeholder="Paste API Key (Optional or use .env)" class="form-control" style="padding: 7px 10px; font-size:0.85rem; border:1px solid #BDC3C7; border-radius:6px; background:white;">
+                    </div>
+                    <p style="margin: 6px 0 0 0; font-size: 0.75rem; color:#566573;">
+                        <i class="fas fa-info-circle"></i> When AI is enabled, model proposals are strictly grounded and cross-referenced against the 71,502 official UNSPSC records to prevent hallucinations.
+                    </p>
+                </div>
+
                 <button type="submit" class="btn btn-primary btn-block" id="submitBtn" disabled>
                     <i class="fas fa-cogs"></i> Process & Get UNSPSC Codes
                 </button>

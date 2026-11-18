@@ -397,13 +397,13 @@ def generate_google_search_url(mfr_name='', mfr_part='', product_name='', suppli
 # STEP 4 & 5: ASSIGN UNSPSC CODE & CATEGORY WITH DOUBT POLICY
 # =====================================================================
 
-def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supplier_part=''):
+def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supplier_part='', api_key='', ai_provider=''):
     """
-    Executes the 5-Step Pipeline:
+    Executes the 5-Step Pipeline (with AI Assistance & 70k Database Cross-Referencing):
     Step 1: Check Manufacturer Name -> Determine what kind of things they manufacture.
     Step 2: Check Supplier Name     -> Determine what kind of things they supply/distribute.
-    Step 3: Google Product Search   -> Check product name & part # in Google search to identify what type of product it is.
-    Step 4: Taxonomy Assignment     -> Assign the UNSPSC code and category according to the identified product type & sector constraints.
+    Step 3: Google Product Search / AI -> Identify what type of product it is.
+    Step 4: Taxonomy Assignment     -> Assign & cross-reference with 71,502 UNSPSC records.
     Step 5: Doubt Assessment Policy -> No Doubt -> Commodity (8-digit); Some Doubt -> Class (6-digit); Huge Doubt -> Segment.
     """
     p_orig = (product_name or '').strip()
@@ -428,41 +428,79 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
     allowed_segments = mfr_segs or supp_segs
 
     # -----------------------------------------------------------------
-    # STEP 3: Google Product Search - Identify what type of product it is
+    # STEP 3: Check AI (Gemini/DeepSeek/ChatGPT) & Google Search for Product Type
     # -----------------------------------------------------------------
-    identified_type, search_reason = step3_google_search_product_type(p_orig, m_name, m_part)
-
-    # -----------------------------------------------------------------
-    # STEP 4: Assign UNSPSC Code & Category According to Identified Product Type
-    # -----------------------------------------------------------------
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', identified_type.lower()).split() if len(w) > 1]
     best_match = None
     confidence = "Some Doubt"
     match_method = ""
+    ai_applied = False
 
-    if tokens:
-        # 4A. Exact Multi-Token Match on FTS
-        exact_q = ' '.join(f'"{t}"' for t in tokens)
-        try:
-            c.execute("""
-                SELECT commodity_code, commodity_name, class_code, class_name,
-                       family_code, family_name, segment_code, segment_name, rank
-                FROM unspsc_fts
-                WHERE unspsc_fts MATCH ?
-                ORDER BY rank
-                LIMIT 25;
-            """, (exact_q,))
-            candidates = c.fetchall()
-            domain_filtered = [row for row in candidates if not allowed_segments or row[6][:2] in allowed_segments]
-            if domain_filtered:
-                best_match = domain_filtered[0]
+    # Attempt AI Assistance if configured
+    try:
+        from ai_assistant import query_ai_for_product, cross_reference_with_70k_database
+        ai_res = query_ai_for_product(
+            product_name=p_orig,
+            mfr_name=m_name,
+            mfr_part=m_part,
+            supplier_name=s_name,
+            supplier_part=s_part,
+            api_key=api_key,
+            provider=ai_provider
+        )
+        if ai_res:
+            ai_applied = True
+            if ai_res.get('mfr_goods'):
+                mfr_domain_desc = f"{ai_res['mfr_goods']} (AI Verified)"
+            if ai_res.get('supplier_goods'):
+                supp_domain_desc = f"{ai_res['supplier_goods']} (AI Verified)"
+            identified_type = ai_res.get('product_type') or p_orig
+
+            # Cross-reference with 71,502 official records
+            xref = cross_reference_with_70k_database(ai_res, allowed_segments)
+            if xref:
+                db_row, xref_note = xref
+                comm_c = db_row['commodity_code']
+                comm_n = db_row['commodity_name']
+                class_c = db_row.get('class_code') or (comm_c[:6] + '00')
+                class_n = db_row.get('class_name') or ''
+                fam_c = db_row.get('family_code') or (comm_c[:4] + '0000')
+                fam_n = db_row.get('family_name') or ''
+                seg_c = db_row.get('segment_code') or (comm_c[:2] + '000000')
+                seg_n = db_row.get('segment_name') or ''
+                best_match = (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, 0.0)
                 confidence = "No Doubt"
-                match_method = f"Step 4: Assigned via Google product type '{identified_type}' (Exact match)"
-        except Exception:
-            pass
+                match_method = f"Step 4: AI Assisted & Grounded in 71,502 records ({xref_note})"
+    except Exception as e:
+        pass
+
+    if not ai_applied:
+        identified_type, search_reason = step3_google_search_product_type(p_orig, m_name, m_part)
+
+    if not best_match:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', identified_type.lower()).split() if len(w) > 1]
+
+        # 4A. Exact Multi-Token Match on FTS
+        if tokens:
+            exact_q = ' '.join(f'"{t}"' for t in tokens)
+            try:
+                c.execute("""
+                    SELECT commodity_code, commodity_name, class_code, class_name,
+                           family_code, family_name, segment_code, segment_name, rank
+                    FROM unspsc_fts
+                    WHERE unspsc_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT 25;
+                """, (exact_q,))
+                candidates = c.fetchall()
+                domain_filtered = [row for row in candidates if not allowed_segments or row[6][:2] in allowed_segments]
+                if domain_filtered:
+                    best_match = domain_filtered[0]
+                    confidence = "No Doubt"
+                    match_method = f"Step 4: Assigned via Google product type '{identified_type}' (Exact match)"
+            except Exception:
+                pass
 
         # 4B. Compound Head Noun Query (Last 2 salient tokens)
         if not best_match and len(tokens) >= 2:
@@ -533,7 +571,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                 except Exception:
                     pass
 
-    conn.close()
+        conn.close()
 
     # -----------------------------------------------------------------
     # STEP 5: Doubt Assessment & Conservative Rollup Policy
