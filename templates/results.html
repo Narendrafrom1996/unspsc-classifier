@@ -139,9 +139,12 @@
                             <span style="color:#2C3E50;">{{ r.step5_detail }}</span>
                         </div>
                     </td>
-                    <td>
-                        <a href="{{ r.google_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding:4px 10px; font-size:0.78rem; text-decoration:none; display:inline-flex; align-items:center; gap:5px; border-radius:6px;" title="Verify on Google (Manufacturer & Product)">
-                            <i class="fab fa-google" style="color:#4285F4;"></i> Verify
+                    <td style="white-space:nowrap;">
+                        <a href="{{ r.google_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; text-decoration:none; display:inline-flex; align-items:center; gap:4px; border-radius:5px; margin-right:4px;" title="Verify on Google">
+                            <i class="fab fa-google" style="color:#4285F4;"></i> Google
+                        </a>
+                        <a href="{{ r.chatgpt_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; text-decoration:none; display:inline-flex; align-items:center; gap:4px; border-radius:5px; background:#F4F6F6;" title="Ask ChatGPT / AI for product identification & UNSPSC">
+                            <i class="fas fa-robot" style="color:#10A37F;"></i> AI Prompt
                         </a>
                     </td>
                     <td class="extra-col" style="display:none;">{{ r.commodity_name }}</td>

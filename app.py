@@ -10,6 +10,7 @@ Precedence:
 import os
 import uuid
 import time
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
@@ -137,6 +138,9 @@ def process_excel(filepath, api_key='', ai_provider=''):
             ai_provider=ai_provider
         )
 
+        ai_query = f"What type of product is {mfr_name} {product_name} {mfr_part}? What is its official 8-digit UNSPSC code and category?".strip()
+        chatgpt_url = f"https://chatgpt.com/?q={urllib.parse.quote(ai_query)}"
+
         results.append({
             'sno': total_rows,
             'product_name': product_name,
@@ -156,6 +160,7 @@ def process_excel(filepath, api_key='', ai_provider=''):
             'step4_detail': m.get('step4_detail', ''),
             'step5_detail': m.get('step5_detail', ''),
             'google_url': m.get('google_url') or generate_google_search_url(mfr_name, mfr_part, product_name, supplier_name, supplier_part),
+            'chatgpt_url': chatgpt_url,
             'commodity_code': m['commodity_code'],
             'commodity_name': m['commodity_name'],
             'class_code': m['class_code'],
@@ -180,7 +185,7 @@ def create_output_excel(results, original_filename):
         "Supplier Name", "Supplier Part #",
         "Assigned UNSPSC Code", "Assigned Category", "Assigned Level", "Doubt / Confidence", "Match Method",
         "Concrete Step Audit Trail",
-        "Google / Catalog Search",
+        "Google Search", "Ask ChatGPT / AI",
         "Commodity Code", "Commodity Name", "Class Code", "Class Name",
         "Family Code", "Family Name", "Segment Code", "Segment Name"
     ]
@@ -210,12 +215,14 @@ def create_output_excel(results, original_filename):
 
     for r in results:
         g_url = r['google_url']
+        ai_url = r.get('chatgpt_url', '')
         row_data = [
             r['sno'], r['product_name'], r['mfr_name'], r['mfr_part'],
             r['supplier_name'], r['supplier_part'],
             r['assigned_code'], r['assigned_category'], r['assigned_level'], r['confidence'], r['match_method'],
             r.get('step_audit_trail', ''),
             f'=HYPERLINK("{g_url}", "Verify on Google")',
+            f'=HYPERLINK("{ai_url}", "Ask ChatGPT / AI")',
             r['commodity_code'], r['commodity_name'], r['class_code'], r['class_name'],
             r['family_code'], r['family_name'], r['segment_code'], r['segment_name']
         ]
@@ -234,11 +241,15 @@ def create_output_excel(results, original_filename):
         ws.cell(row=row_num, column=9).fill = fill
         ws.cell(row=row_num, column=10).fill = fill
 
-        link_cell = ws.cell(row=row_num, column=13)
-        link_cell.font = link_font
-        link_cell.alignment = Alignment(horizontal="center", vertical="center")
+        link_cell_g = ws.cell(row=row_num, column=13)
+        link_cell_g.font = link_font
+        link_cell_g.alignment = Alignment(horizontal="center", vertical="center")
 
-    widths = [6, 40, 22, 22, 22, 20, 20, 36, 18, 16, 28, 60, 20, 16, 32, 16, 32, 16, 32, 16, 45]
+        link_cell_ai = ws.cell(row=row_num, column=14)
+        link_cell_ai.font = link_font
+        link_cell_ai.alignment = Alignment(horizontal="center", vertical="center")
+
+    widths = [6, 40, 22, 22, 22, 20, 20, 36, 18, 16, 28, 60, 20, 20, 16, 32, 16, 32, 16, 32, 16, 45]
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
