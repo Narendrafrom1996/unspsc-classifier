@@ -170,10 +170,15 @@ MANUFACTURER_PROFILES: Dict[str, Tuple[str, Set[str]]] = {
     'bd': ('Hypodermic Needles, Syringes, BD Vacutainers & Catheters', {'42', '41'}),
     'cardinal health': ('Surgical Drapes, PPE Apparel, Medical Gloves & Fluid Waste', {'42', '46'}),
     'smiths medical': ('Infusion Systems, Syringe Pumps & Tracheostomy Consumables', {'42'}),
+    'bard': ('Medical Catheters, Urological Drainage & Vascular Access', {'42'}),
+    'zimmer': ('Orthopedic Implants, Surgical Instruments & Joint Replacement', {'42'}),
+    'stryker': ('Surgical Instruments, Medical Devices & Patient Handling', {'42'}),
     'prestan': ('CPR Training Manikins & CPR Feedback Monitors', {'42'}),
     'prestan products': ('CPR Training Manikins & CPR Feedback Monitors', {'42'}),
 
     # Personal Protective Equipment & Safety (Segment 46)
+    'msa': ('Personal Protective Equipment, Gas Detection, Hard Hats & Fall Protection', {'46', '41'}),
+    'msa safety': ('Personal Protective Equipment, Gas Detection, Hard Hats & Fall Protection', {'46', '41'}),
     '3m': ('N95 Respirators, Hearing Protection, Safety Spectacles & Adhesives', {'46', '31', '41'}),
     'honeywell': ('Personal Protective Equipment, Hard Hats, Harnesses & Gas Detectors', {'46', '41'}),
     'ansell': ('Industrial Chemical Gloves, Examination Gloves & Protective Suits', {'46', '42'}),
@@ -245,7 +250,22 @@ PACKAGING_PATTERNS = [
     r',?\s*\bcase\s+\d+\b.*$',
 ]
 
-ADJECTIVES_PREFIX = {'acrylic', 'stainless steel', 'plastic', 'metal', 'wooden', 'glass', 'full', 'short', 'heavy duty', 'standard', 'deluxe', 'economy', 'clear'}
+ADJECTIVES_PREFIX = {
+    'acrylic', 'stainless steel', 'plastic', 'metal', 'wooden', 'glass', 'full', 'short',
+    'heavy duty', 'standard', 'deluxe', 'economy', 'clear', 'optional', 'option',
+    'replacement', 'replc', '2nd', '3rd', 'model', 'generic', 'universal'
+}
+
+GENERIC_STOP_WORDS = {
+    'the', 'and', 'for', 'with', 'from', 'this', 'that', 'your', 'have', 'more', 'about',
+    'free', 'shipping', 'order', 'orders', 'price', 'prices', 'item', 'items', 'number',
+    'each', 'pack', 'size', 'inch', 'piece', 'pieces', 'unit', 'units', 'case', 'box',
+    'optional', 'option', 'replacement', 'replc', 'model', 'series', 'grade', 'premium',
+    'standard', 'universal', 'general', 'commercial', 'industrial', 'heavy', 'duty',
+    'style', 'type', 'part', 'parts', 'accessory', 'accessories', '2nd', 'clear', 'black',
+    'white', 'blue', 'yellow', 'red', 'green', 'large', 'small', 'medium', 'xl', 'xxl',
+    'only', 'without', 'plus', 'pro', 'set', 'lot', 'assorted', 'brand', 'cat'
+}
 
 
 def clean_procurement_text(text: str) -> Dict[str, Any]:
@@ -261,6 +281,17 @@ def clean_procurement_text(text: str) -> Dict[str, Any]:
     # Split clauses on commas, semicolons, pipes, em-dash, or spaced hyphen
     clauses = [c.strip() for c in re.split(r'[,;|—]|\s+-\s+', s) if c.strip()]
     primary = clauses[0] if clauses else s
+
+    # Invert catalog compound nouns (e.g. "Tape,Medical,Paper" -> "Medical Tape")
+    if len(clauses) >= 2:
+        c0 = clauses[0].strip().lower()
+        c1 = clauses[1].strip()
+        if c0 in {'tape', 'gown', 'tray', 'syringe', 'glove', 'gloves', 'mask', 'filter', 'bag', 'tube', 'tubing', 'valve', 'cartridge', 'cable', 'cover', 'protector', 'pad', 'liner', 'drape'}:
+            primary = f"{c1} {clauses[0].strip()}"
+
+    # Strip leading adjectives/prefixes if primary is too generic
+    if primary.lower().split()[0] in ADJECTIVES_PREFIX and len(primary.split()) > 1:
+        primary = ' '.join(primary.split()[1:])
 
     if primary.lower() in ADJECTIVES_PREFIX and len(clauses) > 1:
         for next_c in clauses[1:]:
@@ -301,12 +332,20 @@ HEAD_NOUN_TAXONOMY = [
     (r'\b(center\s+punch)\b', '27111555', 'Center punch'),
     (r'\b(voltage\s+detector|voltage\s+tester)\b', '27111738', 'Voltage tester screwdriver'),
     (r'\b(sockets?)\b(?=.*(point|drive|sae|deep|metric|1/2|3/8|9/16))', '27111768', 'Point socket'),
+    (r'\b(rotary\s+hammer|hammer\s+drill|sds(\s+plus|\s+max)?)\b', '27112703', 'Power drills'),
+    (r'\b(impact\s+driver|impact\s+wrench)\b', '27112713', 'Impact wrenches'),
     (r'\b(cordless\s+drills?|power\s+drills?|electric\s+drills?)\b', '27112703', 'Power drills'),
+    (r'\b(angle\s+grinder|disc\s+grinder)\b', '27112704', 'Power grinders'),
+    (r'\b(circular\s+saw|reciprocating\s+saw|sawzall|jig\s+saw)\b', '27112709', 'Power saws'),
+    (r'\b(clamp\s+meter|multimeter|true\s+rms|model\s+117|fluke\s+117)\b', '41113630', 'Multimeters'),
     (r'\b(masonry\s+disc|cutting\s+disc|cut-off\s+wheel|grinding\s+disc)\b', '31191602', 'Abrasive diamond wheels'),
     (r'\b(centrifugal\s+(water\s+)?pumps?)\b', '40151503', 'Centrifugal pumps'),
     (r'\b(driveway\s+markers?)\b', '46211602', 'Work area warning posts and chains'),
 
-    # IT, Office, Papers
+    # IT, Office, Papers & Facility
+    (r'\b(catalyst\s+[0-9]+[a-z0-9\-]*|network\s+switch|ethernet\s+switch)\b', '43222612', 'Network switches'),
+    (r'\b(probook|elitebook|thinkpad|latitude|inspiron)\b', '43211503', 'Notebook computers'),
+    (r'\b(poweredge|proliant|ucs\s+server)\b', '43211501', 'Computer servers'),
     (r'\b(laptops?|notebooks?(\s+computer)?)\b', '43211503', 'Notebook computers'),
     (r'\b(desktops?(\s+computer)?|workstations?|pc)\b', '43211507', 'Desktop computers'),
     (r'\b(ethernet|lan|cat5e?|cat6a?|cat7|rj45)\s+(cables?|cords?|wire)\b', '26121609', 'Network cable'),
@@ -314,12 +353,33 @@ HEAD_NOUN_TAXONOMY = [
     (r'\b(copy\s+papers?|copier\s+papers?|printer\s+papers?|a4\s+papers?)\b', '14111507', 'Printer or copier paper'),
     (r'\b(shipping\s+boxes?|corrugated\s+boxes?|cardboard\s+boxes?|shipping\s+cartons?)\b', '24112501', 'Slotted corrugated cartons'),
     (r'\b(disinfecting\s+wipes?|cleaning\s+wipes?)\b', '47131502', 'Cleaning cloths or wipes'),
+    (r'\b(trash\s+(can\s+)?liners?|trash\s+bags?|garbage\s+bags?|refuse\s+bags?)\b', '47121701', 'Trash bags'),
+    (r'\b(floor\s+cleaner|floor\s+finish|floor\s+stripper|floor\s+cleaning)\b', '47131801', 'Floor cleaners'),
+    (r'\b(dry\s+erase(\s+boards?)?|whiteboards?|white\s+boards?)\b', '44111905', 'Dry erase boards or accessories'),
 
-    # Chemicals
+    # Medical & PPE Head Nouns
+    (r'\b(isolation\s+gown|cover\s+gown)\b', '42131612', 'Medical staff isolation or cover gown'),
+    (r'\b(medical\s+tape|surgical\s+tape|paper\s+tape)\b', '42311708', 'Medical and surgical adherent tapes for general use'),
+    (r'\b(luer\s+lock|hypodermic\s+syringe|medical\s+syringe)\b', '42142608', 'Medical syringe without needle'),
+    (r'\b(chin\s+cup|chin\s+protector|chin\s+cp\d+|chin\s+cp8|facial\s+shield\s+parts?)\b', '46181707', 'Facial shields parts or accessories'),
+    (r'\b(foley(\s+catheter)?|tray,\s*foley)\b', '42142702', 'Foley catheters'),
+
+    # Chemicals & Solvents
+    (r'\b(methanol|methyl\s+alcohol)\b', '12352104', 'Alcohols or its substitutes'),
+    (r'\b(ethanol|ethyl\s+alcohol)\b', '12352104', 'Alcohols or its substitutes'),
+    (r'\b(isopropanol|isopropyl\s+alcohol|2-propanol|ipa)\b', '12352104', 'Alcohols or its substitutes'),
+    (r'\b(acetonitrile|acn)\b', '12352117', 'Cyanides or isocyanides'),
+    (r'\b(acetone|2-propanone)\b', '12352115', 'Ketones or quinones or its substitutes'),
+    (r'\b(tetrahydrofuran|thf|diethyl\s+ether)\b', '12352112', 'Ethers or its substitutes'),
+    (r'\b(hexane|heptane|pentane)\b', '12191502', 'Aliphatic solvents'),
+    (r'\b(toluene|benzene|xylene)\b', '12191501', 'Aromatic solvents'),
+    (r'\b(chloroform|dichloromethane|dcm|methylene\s+chloride)\b', '12352101', 'Organic halogenated compounds'),
+    (r'\b(dimethyl\s+sulfoxide|dmso)\b', '12352113', 'Thioethers'),
+    (r'\b(sodium\s+hydroxide|caustic\s+soda)\b', '12352316', 'Sodium hydroxide'),
     (r'\b(undecanal)\b', '12352114', 'Aldehydes or its substitutes'),
-    (r'\b(tetradecanoic\s+acid|malonic\s+acid)\b', '12352106', 'Organic acids or its substitutes'),
+    (r'\b(tetradecanoic\s+acid|malonic\s+acid|formic\s+acid|acetic\s+acid|trifluoroacetic\s+acid|tfa)\b', '12352106', 'Organic acids or its substitutes'),
     (r'\b(bezafibrate)\b', '51321901', 'Bezafibrate'),
-    (r'\b(hydrofluoric\s+acid)\b', '12352301', 'Inorganic acids'),
+    (r'\b(hydrofluoric\s+acid|hydrochloric\s+acid|sulfuric\s+acid|nitric\s+acid)\b', '12352301', 'Inorganic acids'),
 ]
 
 
@@ -348,12 +408,12 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('46181706', 'Helmet parts or accessories', 'Face and head protection', 'Personal safety and protection')
 
     # 5. Face shields & visors
-    if any(k in s for k in ['face shield', 'faceshield', 'face veil', 'visor']):
-        if any(k in s for k in ['parts', 'klip lift', 'replacement', 'adapter', 'bracket']):
+    if any(k in s for k in ['face shield', 'faceshield', 'face veil', 'visor', 'chin protector', 'chin guard', 'chin cp8', 'chin cup', 'chin cp', 'cp8']):
+        if any(k in s for k in ['parts', 'klip lift', 'replacement', 'adapter', 'bracket', 'replc', 'chin', 'cp8']):
             return ('46181707', 'Facial shields parts or accessories', 'Face and head protection', 'Personal safety and protection')
         return ('46181702', 'Facial shields', 'Face and head protection', 'Personal safety and protection')
 
-    if 'klip lift' in s:
+    if 'klip lift' in s or 'cp8' in s:
         return ('46181707', 'Facial shields parts or accessories', 'Face and head protection', 'Personal safety and protection')
 
     # 6. Cabinets, Storage, Cleanrooms
@@ -485,8 +545,24 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('46182001', 'Protective masks', 'Respiratory protection', 'Personal safety and protection')
 
     # 21. Medical & Surgical Supplies
-    if 'catheter' in s or 'tray,foley' in s:
+    if any(k in s for k in ['catheter', 'tray,foley', 'tray, foley', 'foley tray', 'foley catheter']):
         return ('42142702', 'Foley catheters', 'Medical tube kits and accessories', 'Medical training and education supplies')
+    if any(k in s for k in ['isolation gown', 'gown,isolation', 'gown, isolation', 'cover gown']):
+        return ('42131612', 'Medical staff isolation or cover gown', 'Medical staff clothing and related articles', 'Medical apparel and textiles')
+    if any(k in s for k in ['medical tape', 'tape,medical', 'tape, medical', 'surgical tape', 'tape,surgical', 'tape, surgical']):
+        return ('42311708', 'Medical and surgical adherent tapes for general use', 'Medical and surgical adherent tapes and related products for specialty use', 'Wound care products')
+    if any(k in s for k in ['luer lock', 'syringe,luer', 'syringe, luer', 'hypodermic syringe', 'plasti-pak']):
+        return ('42142608', 'Medical syringe without needle', 'Syringes and accessories', 'Patient care and treatment products and supplies')
+    if any(k in s for k in ['column for dry', 'drying column', 'dry tr']):
+        return ('41115709', 'High pressure liquid chromatography HPLC columns', 'Chromatographic measuring instruments and accessories', 'Measuring and observing and testing instruments')
+
+    # Janitorial & Facilities
+    if any(k in s for k in ['trash can liner', 'trash bag', 'garbage bag', 'can liner', 'refuse bag']):
+        return ('47121701', 'Trash bags', 'Waste containers and accessories', 'Janitorial equipment')
+    if any(k in s for k in ['floor cleaner', 'floor stripper', 'floor finish', 'floor cleaner concentrate']):
+        return ('47131801', 'Floor cleaners', 'Cleaning and disinfecting solutions', 'Cleaning and janitorial supplies')
+    if any(k in s for k in ['dry erase', 'whiteboard', 'white board']) and 'eraser' not in s:
+        return ('44111905', 'Dry erase boards or accessories', 'Boards', 'Office and desk accessories')
     if 'suction' in s and 'kit' in s:
         return ('42271601', 'Suction catheters', 'Airway management products', 'Medical facility products')
     if 'urinal' in s:
@@ -634,11 +710,7 @@ def deep_doubt_ai_resolution(
             c = conn.cursor()
             combined_text = f"{m_name} {p_orig} {m_part}".lower()
             clean_text = re.sub(r'[^a-zA-Z0-9\s]', ' ', combined_text)
-            tokens = [w for w in clean_text.split() if len(w) > 3 and w not in {
-                'from', 'with', 'this', 'that', 'your', 'have', 'more', 'about',
-                'free', 'shipping', 'order', 'orders', 'price', 'prices', 'item', 'number',
-                'each', 'pack', 'size', 'inch', 'piece', 'unit', 'model'
-            }]
+            tokens = [w for w in clean_text.split() if len(w) > 3 and w not in GENERIC_STOP_WORDS]
 
             # Try 2-grams
             for i in range(min(len(tokens) - 1, 15)):
@@ -651,7 +723,7 @@ def deep_doubt_ai_resolution(
                         WHERE unspsc_fts MATCH ?
                         ORDER BY rank LIMIT 10;
                     """, (two_gram,))
-                    rows = [r for r in c.fetchall() if int(r[6][:2]) < 70 and (not allowed_segments or r[6][:2] in allowed_segments)]
+                    rows = [r for r in c.fetchall() if int(r[6][:2]) <= 60 and (not allowed_segments or r[6][:2] in allowed_segments)]
                     if rows:
                         best_match = rows[0][:8]
                         resolved_type = f"{tokens[i]} {tokens[i+1]}"
@@ -670,7 +742,7 @@ def deep_doubt_ai_resolution(
                             WHERE unspsc_fts MATCH ?
                             ORDER BY rank LIMIT 10;
                         """, (f'"{token}"',))
-                        rows = [r for r in c.fetchall() if int(r[6][:2]) < 70 and (not allowed_segments or r[6][:2] in allowed_segments)]
+                        rows = [r for r in c.fetchall() if int(r[6][:2]) <= 60 and (not allowed_segments or r[6][:2] in allowed_segments)]
                         if rows:
                             best_match = rows[0][:8]
                             resolved_type = token
@@ -848,7 +920,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             s_clean = re.sub(rf'\b{re.escape(m_name.lower().strip())}\b', ' ', s_clean)
 
         tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', s_clean).split() 
-                  if len(w) > 2 and w not in {'the', 'and', 'for', 'with', 'from', 'each', 'pack', 'case', 'box', 'size', 'color', 'unit', 'units'}]
+                  if len(w) > 2 and w not in GENERIC_STOP_WORDS]
 
         if tokens:
             # 4A. Exact phrase on Primary clause
@@ -863,8 +935,8 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                     LIMIT 20;
                 """, (phrase_q,))
                 candidates = c.fetchall()
-                # Gating: filter out service segments (70-94) and apply domain constraints if any
-                filtered = [row for row in candidates if int(row[6][:2]) < 70 and (not allowed_segments or row[6][:2] in allowed_segments)]
+                # Gating: filter out service & financial segments (64-94) and apply domain constraints if any
+                filtered = [row for row in candidates if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments)]
                 if filtered:
                     best_match = filtered[0]
                     confidence = "No Doubt"
@@ -885,7 +957,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                         LIMIT 20;
                     """, (comp_q,))
                     candidates = c.fetchall()
-                    filtered = [row for row in candidates if int(row[6][:2]) < 70 and (not allowed_segments or row[6][:2] in allowed_segments)]
+                    filtered = [row for row in candidates if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments)]
                     if filtered:
                         best_match = filtered[0]
                         confidence = "No Doubt"
@@ -905,7 +977,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                         LIMIT 20;
                     """, (f'"{tokens[0]}"',))
                     candidates = c.fetchall()
-                    filtered = [row for row in candidates if int(row[6][:2]) < 70 and (not allowed_segments or row[6][:2] in allowed_segments)]
+                    filtered = [row for row in candidates if int(row[6][:2]) <= 60 and (not allowed_segments or row[6][:2] in allowed_segments)]
                     if filtered:
                         best_match = filtered[0]
                         confidence = "Some Doubt"
@@ -978,14 +1050,40 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             'segment_name': seg_name
         }
 
-    # Ultimate Fallback (Default Protective / General Goods)
-    fallback_code = '46181504'
-    fallback_cat = 'Protective gloves'
+    # Ultimate Sector-Aware Grounded Fallback
+    fallback_code = '46181503'
+    fallback_cat = 'Protective work suits'
+    class_code = '46181500'
+    class_name = 'Safety apparel'
+    fam_code = '46180000'
+    fam_name = 'Personal safety and protection'
+    seg_code = '46000000'
+    seg_name = 'Defense and Law Enforcement and Security and Safety Equipment and Supplies'
+
+    if allowed_segments:
+        primary_seg = sorted(list(allowed_segments))[0]
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("""
+                SELECT commodity_code, commodity_name, class_code, class_name,
+                       family_code, family_name, segment_code, segment_name
+                FROM unspsc_items
+                WHERE segment_code LIKE ? AND commodity_code NOT LIKE '%00'
+                ORDER BY commodity_code ASC LIMIT 1;
+            """, (f"{primary_seg}%",))
+            row = c.fetchone()
+            conn.close()
+            if row:
+                fallback_code, fallback_cat, class_code, class_name, fam_code, fam_name, seg_code, seg_name = row
+        except Exception:
+            pass
+
     step1_detail = f"Manufacturer '{m_name}' manufactures: {mfr_domain_desc}" if m_name else "MFR: Not provided"
     step2_detail = f"Supplier '{s_name}' supplies: {supp_domain_desc}" if s_name else "Supplier: Direct / Standard distribution"
     step3_detail = f"Product Search: Unresolved description '{p_orig}'"
-    step4_detail = f"Taxonomy: Fallback 8-Digit Commodity {fallback_code}"
-    step5_detail = f"Audit Status: Some Doubt -> Assigned Commodity (8-digit) '{fallback_code}' ({fallback_cat})"
+    step4_detail = f"Taxonomy: Sector Fallback Commodity {fallback_code}"
+    step5_detail = f"Audit Status: Some Doubt -> Assigned Commodity '{fallback_code}' ({fallback_cat})"
     step_audit_trail = f"[Step 1: MFR] {step1_detail} | [Step 2: Supplier] {step2_detail} | [Step 3: Identification] {step3_detail} | [Step 4: Unresolved] | [Step 5: Status] {step5_detail}"
 
     return {
@@ -993,7 +1091,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
         'assigned_category': fallback_cat,
         'assigned_level': 'Commodity (8-digit)',
         'confidence': 'Some Doubt',
-        'match_method': 'Fallback General Commodity',
+        'match_method': 'Sector Intelligence Fallback (Review Recommended)',
         'step_audit_trail': step_audit_trail,
         'step1_detail': step1_detail,
         'step2_detail': step2_detail,
@@ -1003,12 +1101,12 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
         'google_url': google_url,
         'commodity_code': fallback_code,
         'commodity_name': fallback_cat,
-        'class_code': '46181500',
-        'class_name': 'Safety apparel',
-        'family_code': '46180000',
-        'family_name': 'Personal safety and protection',
-        'segment_code': '46000000',
-        'segment_name': 'Defense and Law Enforcement and Security and Safety Equipment and Supplies'
+        'class_code': class_code,
+        'class_name': class_name,
+        'family_code': fam_code,
+        'family_name': fam_name,
+        'segment_code': seg_code,
+        'segment_name': seg_name
     }
 
 
