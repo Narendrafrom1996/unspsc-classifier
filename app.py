@@ -23,6 +23,7 @@ except Exception:
     pass
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
+from werkzeug.utils import secure_filename
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -257,7 +258,9 @@ def create_output_excel(results, original_filename):
     ws.auto_filter.ref = ws.dimensions
 
     base = Path(original_filename).stem
-    output_name = f"{base}_UNSPSC_mapped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    safe_base = secure_filename(base) or "UNSPSC_output"
+    output_name = f"{safe_base}_UNSPSC_mapped_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
     output_path = os.path.join(app.config['DOWNLOAD_FOLDER'], output_name)
     wb.save(output_path)
     return output_path, output_name
@@ -285,14 +288,24 @@ def upload_file():
         flash('Invalid file type. Please upload .xlsx, .xls, or .csv files.', 'error')
         return redirect(url_for('index'))
 
-    unique_name = f"{uuid.uuid4().hex}_{file.filename}"
+    # Sanitize incoming filename to prevent directory traversal or malformed paths
+    raw_filename = os.path.basename(file.filename or '')
+    clean_fname = secure_filename(raw_filename)
+    if not clean_fname:
+        ext = raw_filename.rsplit('.', 1)[1].lower() if '.' in raw_filename else 'xlsx'
+        clean_fname = f"upload_{uuid.uuid4().hex[:8]}.{ext}"
+
+    unique_name = f"{uuid.uuid4().hex}_{clean_fname}"
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
-    file.save(filepath)
 
     ai_provider = request.form.get('ai_provider', '').strip()
     ai_key = request.form.get('ai_key', '').strip()
 
     try:
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
+        file.save(filepath)
+
         start_time = time.time()
         results = process_excel(filepath, api_key=ai_key, ai_provider=ai_provider)
         processing_time = round(time.time() - start_time, 2)
@@ -301,7 +314,7 @@ def upload_file():
             flash('No data rows found in the uploaded file.', 'error')
             return redirect(url_for('index'))
 
-        output_path, output_name = create_output_excel(results, file.filename)
+        output_path, output_name = create_output_excel(results, raw_filename or clean_fname)
 
         total = len(results)
         no_doubt = sum(1 for r in results if r['confidence'] in ('No Doubt', 'High'))
@@ -318,14 +331,29 @@ def upload_file():
                                no_match=no_match,
                                processing_time=processing_time,
                                output_file=output_name,
-                               original_file=file.filename)
+                               original_file=raw_filename or clean_fname)
 
     except Exception as e:
         flash(f'Error processing file: {str(e)}', 'error')
         return redirect(url_for('index'))
     finally:
-        if os.path.exists(filepath):
-            os.remove(filepath)
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
+
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    flash(f'Internal Server Error: {str(e)}', 'error')
+    return redirect(url_for('index')), 500
+
+
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    flash('Uploaded file is too large. Maximum allowed size is 32MB.', 'error')
+    return redirect(url_for('index')), 413
 
 
 @app.route('/download/<filename>')

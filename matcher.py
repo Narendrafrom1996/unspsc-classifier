@@ -627,7 +627,7 @@ def deep_doubt_ai_resolution(
         except Exception:
             pass
 
-    # 2. Live Web Platform Search via DDGS (Zero-key fallback)
+    # Live Web Platform Search via DDGS (Zero-key fallback)
     if not best_match:
         try:
             from ddgs import DDGS
@@ -643,6 +643,8 @@ def deep_doubt_ai_resolution(
             web_snippets = []
             with DDGS() as ddgs:
                 for q in queries[:2]:
+                    if time.time() - t_start >= 10.0:
+                        break
                     try:
                         results = list(ddgs.text(q, max_results=3))
                         for r in results:
@@ -651,7 +653,8 @@ def deep_doubt_ai_resolution(
                             web_snippets.append(f"{title}. {body}")
                     except Exception:
                         pass
-                    time.sleep(0.8)
+                    if time.time() - t_start >= 10.0:
+                        break
 
             combined_snippets = " ".join(web_snippets)
             if combined_snippets:
@@ -707,15 +710,10 @@ def deep_doubt_ai_resolution(
                     pass
             conn.close()
 
-    # Ensure policy of at least 10 seconds per doubt resolution
     elapsed = time.time() - t_start
-    if elapsed < min_duration:
-        time.sleep(min_duration - elapsed)
-        elapsed = time.time() - t_start
-
     if best_match:
         comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n = best_match[:8]
-        return (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, resolved_type, f"Deep AI & Web Platform Resolution ({elapsed:.1f}s)", elapsed)
+        return (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, resolved_type, f"Deep AI & Web Platform Resolution ({elapsed:.2f}s)", elapsed)
 
     return None
 
@@ -1048,6 +1046,18 @@ def search_unspsc(query, limit=25):
                     results.append(dict(row))
                     if len(results) >= limit:
                         break
+
+        # If still no results, check Manufacturer & Supplier intelligence
+        if not results:
+            mfr_desc, _ = step1_check_manufacturer(query)
+            if mfr_desc:
+                mfr_clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', mfr_desc.lower())
+                m_tokens = [w for w in mfr_clean.split() if len(w) > 3 and w not in {'enterprise', 'standard', 'precision', 'general', 'commercial', 'supplies', 'equipment'}]
+                if m_tokens:
+                    m_fts = ' OR '.join(f'"{t}"*' for t in m_tokens[:4])
+                    cursor.execute(sql, (m_fts, limit))
+                    results = [dict(row) for row in cursor.fetchall()]
+
         return results
     except Exception as e:
         print(f"search_unspsc error: {e}")
