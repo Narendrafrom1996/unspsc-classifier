@@ -48,18 +48,37 @@ def allowed_file(filename):
 
 def process_excel(filepath, api_key='', ai_provider=''):
     """
-    Read an uploaded Excel file, detecting:
+    Read an uploaded Excel or CSV file, detecting:
     - Manufacturer Name & Part #
     - Product Name
     - Supplier Name & Part #
     Evaluates in strict priority order with optional AI assistance and 70k database verification.
     """
-    wb = openpyxl.load_workbook(filepath, data_only=True)
-    ws = wb.active
-
     headers = []
-    for cell in ws[1]:
-        headers.append(str(cell.value).strip() if cell.value is not None else '')
+    data_rows = []
+    wb = None
+
+    if filepath.lower().endswith('.csv'):
+        import csv
+        for enc in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+            try:
+                with open(filepath, 'r', encoding=enc, newline='') as cf:
+                    reader = csv.reader(cf)
+                    rows_data = [row for row in reader]
+                break
+            except UnicodeDecodeError:
+                continue
+        if not rows_data:
+            return []
+        headers = [str(c).strip() for c in rows_data[0]]
+        data_rows = rows_data[1:]
+    else:
+        wb = openpyxl.load_workbook(filepath, data_only=True)
+        ws = wb.active
+        if ws.max_row < 1:
+            return []
+        headers = [str(cell.value).strip() if cell.value is not None else '' for cell in ws[1]]
+        data_rows = [[cell.value for cell in row] for row in ws.iter_rows(min_row=2, values_only=False)]
 
     product_col = None
     mfr_name_col = None
@@ -112,9 +131,7 @@ def process_excel(filepath, api_key='', ai_provider=''):
     results = []
     total_rows = 0
 
-    for row in ws.iter_rows(min_row=2, values_only=False):
-        values = [cell.value for cell in row]
-
+    for values in data_rows:
         if all(v is None or str(v).strip() == '' for v in values):
             continue
 
@@ -172,7 +189,8 @@ def process_excel(filepath, api_key='', ai_provider=''):
             'segment_name': m['segment_name']
         })
 
-    wb.close()
+    if wb is not None:
+        wb.close()
     return results
 
 

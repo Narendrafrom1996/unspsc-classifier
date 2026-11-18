@@ -531,7 +531,7 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('56141703', 'Metal figurine or statuette', 'Metal adornments', 'Decorative adornments')
     if 'c-clamp' in s:
         return ('27112102', 'C clamps', 'Clamping tools', 'Tools and General Machinery')
-    if 'training' in s and 'dvd' in s:
+    if 'dvd' in s or 'video' in s:
         return ('46211502', 'Workplace safety training video', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
     if 'training' in s and 'kit' in s:
         return ('46211501', 'Workplace safety training kit', 'Workplace safety training aids and materials', 'Workplace safety equipment and supplies and training materials')
@@ -627,64 +627,61 @@ def deep_doubt_ai_resolution(
         except Exception:
             pass
 
-    # Live Web Platform Search via DDGS (Zero-key fallback)
+    # 2. Fast In-Memory Multi-Token Resolution across 70k SQLite Records (Zero Network Delays)
     if not best_match:
         try:
-            from ddgs import DDGS
-            queries = []
-            if m_name and m_part:
-                queries.append(f"{m_name} {m_part}")
-            if m_name and p_orig:
-                queries.append(f"{m_name} {p_orig}")
-            if m_part and p_orig:
-                queries.append(f"{m_part} {p_orig}")
-            queries.append(f"{m_name} {p_orig} {m_part} UNSPSC".strip())
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            combined_text = f"{m_name} {p_orig} {m_part}".lower()
+            clean_text = re.sub(r'[^a-zA-Z0-9\s]', ' ', combined_text)
+            tokens = [w for w in clean_text.split() if len(w) > 3 and w not in {
+                'from', 'with', 'this', 'that', 'your', 'have', 'more', 'about',
+                'free', 'shipping', 'order', 'orders', 'price', 'prices', 'item', 'number',
+                'each', 'pack', 'size', 'inch', 'piece', 'unit', 'model'
+            }]
 
-            web_snippets = []
-            with DDGS() as ddgs:
-                for q in queries[:2]:
-                    if time.time() - t_start >= 10.0:
+            # Try 2-grams
+            for i in range(min(len(tokens) - 1, 15)):
+                two_gram = f'"{tokens[i]}" AND "{tokens[i+1]}"'
+                try:
+                    c.execute("""
+                        SELECT commodity_code, commodity_name, class_code, class_name,
+                               family_code, family_name, segment_code, segment_name, rank
+                        FROM unspsc_fts
+                        WHERE unspsc_fts MATCH ?
+                        ORDER BY rank LIMIT 10;
+                    """, (two_gram,))
+                    rows = [r for r in c.fetchall() if int(r[6][:2]) < 70 and (not allowed_segments or r[6][:2] in allowed_segments)]
+                    if rows:
+                        best_match = rows[0][:8]
+                        resolved_type = f"{tokens[i]} {tokens[i+1]}"
                         break
-                    try:
-                        results = list(ddgs.text(q, max_results=3))
-                        for r in results:
-                            title = r.get('title', '')
-                            body = r.get('body', '')
-                            web_snippets.append(f"{title}. {body}")
-                    except Exception:
-                        pass
-                    if time.time() - t_start >= 10.0:
-                        break
+                except Exception:
+                    pass
 
-            combined_snippets = " ".join(web_snippets)
-            if combined_snippets:
-                conn = sqlite3.connect(DB_PATH)
-                c = conn.cursor()
-                clean_snips = re.sub(r'[^a-zA-Z0-9\s]', ' ', combined_snippets.lower())
-                tokens = [w for w in clean_snips.split() if len(w) > 3 and w not in {'from', 'with', 'this', 'that', 'your', 'have', 'more', 'about', 'free', 'shipping', 'order', 'orders', 'price', 'prices', 'item', 'number'}]
-
-                # Check 2-grams against FTS5 enforcing allowed_segments
-                for i in range(min(len(tokens) - 1, 30)):
-                    two_gram = f'"{tokens[i]}" AND "{tokens[i+1]}"'
+            # Try single salient tokens
+            if not best_match:
+                for token in tokens:
                     try:
                         c.execute("""
-                            SELECT commodity_code, commodity_name, class_code, class_name, family_code, family_name, segment_code, segment_name, rank
+                            SELECT commodity_code, commodity_name, class_code, class_name,
+                                   family_code, family_name, segment_code, segment_name, rank
                             FROM unspsc_fts
                             WHERE unspsc_fts MATCH ?
                             ORDER BY rank LIMIT 10;
-                        """, (two_gram,))
+                        """, (f'"{token}"',))
                         rows = [r for r in c.fetchall() if int(r[6][:2]) < 70 and (not allowed_segments or r[6][:2] in allowed_segments)]
                         if rows:
                             best_match = rows[0][:8]
-                            resolved_type = f"{tokens[i]} {tokens[i+1]}"
+                            resolved_type = token
                             break
                     except Exception:
                         pass
-                conn.close()
+            conn.close()
         except Exception:
             pass
 
-    # 2B. Sector & Domain Fallback based on Manufacturer Intelligence
+    # 3. Sector & Domain Fallback based on Manufacturer Intelligence
     if not best_match and m_name:
         mfr_desc, mfr_segs = step1_check_manufacturer(m_name)
         effective_segs = allowed_segments or mfr_segs
@@ -713,7 +710,7 @@ def deep_doubt_ai_resolution(
     elapsed = time.time() - t_start
     if best_match:
         comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n = best_match[:8]
-        return (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, resolved_type, f"Deep AI & Web Platform Resolution ({elapsed:.2f}s)", elapsed)
+        return (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, resolved_type, f"70k Grounded AI/Database Resolution ({elapsed:.2f}s)", elapsed)
 
     return None
 
@@ -919,9 +916,9 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
         conn.close()
 
     # -----------------------------------------------------------------
-    # STEP 4.5: DEEP DOUBT RESOLUTION (User Directive: Spend at least 10s on AI Platform if in doubt)
+    # STEP 4.5: DEEP DOUBT RESOLUTION (When item is unresolved OR user explicitly enabled AI)
     # -----------------------------------------------------------------
-    if not best_match or confidence != "No Doubt":
+    if not best_match or ((api_key or ai_provider) and confidence != "No Doubt"):
         deep_res = deep_doubt_ai_resolution(
             product_name=p_orig,
             mfr_name=m_name,
