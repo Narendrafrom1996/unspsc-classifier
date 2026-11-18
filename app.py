@@ -13,6 +13,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    # Also load from parent directory if present
+    load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+except Exception:
+    pass
+
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side

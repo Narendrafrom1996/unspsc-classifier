@@ -12,7 +12,15 @@ import json
 import re
 import sqlite3
 from typing import Dict, Any, Optional, Tuple
+from pathlib import Path
 import requests
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+except Exception:
+    pass
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'unspsc_data.sqlite')
 
