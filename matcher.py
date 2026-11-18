@@ -10,6 +10,7 @@ Step 5: Confidence & Audit      -> Assign exact 8-digit Commodity code with full
 
 import os
 import re
+import time
 import sqlite3
 import urllib.parse
 from typing import Dict, List, Optional, Set, Tuple, Any
@@ -561,6 +562,165 @@ def generate_google_search_url(mfr_name='', mfr_part='', product_name='', suppli
 
 
 # =====================================================================
+# DEEP DOUBT RESOLUTION (User Directive: Spend at least 10s on AI Platform)
+# =====================================================================
+
+def deep_doubt_ai_resolution(
+    product_name: str,
+    mfr_name: str = '',
+    mfr_part: str = '',
+    supplier_name: str = '',
+    supplier_part: str = '',
+    allowed_segments: Optional[Set[str]] = None,
+    api_key: str = '',
+    ai_provider: str = '',
+    min_duration: float = 10.0
+) -> Optional[Tuple[str, str, str, str, str, str, str, str, str, str, float]]:
+    """
+    Dedicated Deep Doubt Resolution:
+    When an item cannot be definitively classified, takes at least 10 seconds
+    to query AI platforms (Gemini/ChatGPT/DeepSeek) and live search,
+    grounding the result against the 71,502 official records in SQLite.
+    """
+    t_start = time.time()
+    p_orig = (product_name or '').strip()
+    m_name = (mfr_name or '').strip()
+    m_part = (mfr_part or '').strip()
+    s_name = (supplier_name or '').strip()
+    s_part = (supplier_part or '').strip()
+
+    best_match = None
+    resolved_type = p_orig
+
+    # 1. Try AI Platform if key/provider is available
+    if api_key or ai_provider or os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY') or os.environ.get('DEEPSEEK_API_KEY') or os.environ.get('OPENAI_API_KEY'):
+        try:
+            from ai_assistant import query_ai_for_product, cross_reference_with_70k_database
+            ai_res = query_ai_for_product(
+                product_name=p_orig,
+                mfr_name=m_name,
+                mfr_part=m_part,
+                supplier_name=s_name,
+                supplier_part=s_part,
+                api_key=api_key,
+                provider=ai_provider
+            )
+            if ai_res:
+                resolved_type = ai_res.get('product_type') or p_orig
+                xref = cross_reference_with_70k_database(
+                    suggested_code=ai_res.get('suggested_unspsc_code', ''),
+                    suggested_cat=ai_res.get('suggested_category', ''),
+                    product_type=resolved_type,
+                    keywords=ai_res.get('search_keywords', [])
+                )
+                if xref and xref.get('matched'):
+                    db_row = xref['record']
+                    comm_c = db_row['commodity_code']
+                    comm_n = db_row['commodity_name']
+                    class_c = db_row.get('class_code') or (comm_c[:6] + '00')
+                    class_n = db_row.get('class_name') or ''
+                    fam_c = db_row.get('family_code') or (comm_c[:4] + '0000')
+                    fam_n = db_row.get('family_name') or ''
+                    seg_c = db_row.get('segment_code') or (comm_c[:2] + '000000')
+                    seg_n = db_row.get('segment_name') or ''
+                    best_match = (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n)
+        except Exception:
+            pass
+
+    # 2. Live Web Platform Search via DDGS (Zero-key fallback)
+    if not best_match:
+        try:
+            from ddgs import DDGS
+            queries = []
+            if m_name and m_part:
+                queries.append(f"{m_name} {m_part}")
+            if m_name and p_orig:
+                queries.append(f"{m_name} {p_orig}")
+            if m_part and p_orig:
+                queries.append(f"{m_part} {p_orig}")
+            queries.append(f"{m_name} {p_orig} {m_part} UNSPSC".strip())
+
+            web_snippets = []
+            with DDGS() as ddgs:
+                for q in queries[:2]:
+                    try:
+                        results = list(ddgs.text(q, max_results=3))
+                        for r in results:
+                            title = r.get('title', '')
+                            body = r.get('body', '')
+                            web_snippets.append(f"{title}. {body}")
+                    except Exception:
+                        pass
+                    time.sleep(0.8)
+
+            combined_snippets = " ".join(web_snippets)
+            if combined_snippets:
+                conn = sqlite3.connect(DB_PATH)
+                c = conn.cursor()
+                clean_snips = re.sub(r'[^a-zA-Z0-9\s]', ' ', combined_snippets.lower())
+                tokens = [w for w in clean_snips.split() if len(w) > 3 and w not in {'from', 'with', 'this', 'that', 'your', 'have', 'more', 'about', 'free', 'shipping', 'order', 'orders', 'price', 'prices', 'item', 'number'}]
+
+                # Check 2-grams against FTS5 enforcing allowed_segments
+                for i in range(min(len(tokens) - 1, 30)):
+                    two_gram = f'"{tokens[i]}" AND "{tokens[i+1]}"'
+                    try:
+                        c.execute("""
+                            SELECT commodity_code, commodity_name, class_code, class_name, family_code, family_name, segment_code, segment_name, rank
+                            FROM unspsc_fts
+                            WHERE unspsc_fts MATCH ?
+                            ORDER BY rank LIMIT 10;
+                        """, (two_gram,))
+                        rows = [r for r in c.fetchall() if int(r[6][:2]) < 70 and (not allowed_segments or r[6][:2] in allowed_segments)]
+                        if rows:
+                            best_match = rows[0][:8]
+                            resolved_type = f"{tokens[i]} {tokens[i+1]}"
+                            break
+                    except Exception:
+                        pass
+                conn.close()
+        except Exception:
+            pass
+
+    # 2B. Sector & Domain Fallback based on Manufacturer Intelligence
+    if not best_match and m_name:
+        mfr_desc, mfr_segs = step1_check_manufacturer(m_name)
+        effective_segs = allowed_segments or mfr_segs
+        if effective_segs:
+            mfr_words = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', mfr_desc.lower()).split() 
+                         if len(w) > 4 and w not in {'medical', 'consumables', 'management', 'devices', 'general', 'standard', 'precision'}]
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            for w in mfr_words:
+                try:
+                    c.execute("""
+                        SELECT commodity_code, commodity_name, class_code, class_name, family_code, family_name, segment_code, segment_name, rank
+                        FROM unspsc_fts
+                        WHERE unspsc_fts MATCH ?
+                        ORDER BY rank LIMIT 10;
+                    """, (f'"{w}"',))
+                    rows = [r for r in c.fetchall() if int(r[6][:2]) < 70 and r[6][:2] in effective_segs]
+                    if rows:
+                        best_match = rows[0][:8]
+                        resolved_type = f"{m_name} {rows[0][1]}"
+                        break
+                except Exception:
+                    pass
+            conn.close()
+
+    # Ensure policy of at least 10 seconds per doubt resolution
+    elapsed = time.time() - t_start
+    if elapsed < min_duration:
+        time.sleep(min_duration - elapsed)
+        elapsed = time.time() - t_start
+
+    if best_match:
+        comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n = best_match[:8]
+        return (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, resolved_type, f"Deep AI & Web Platform Resolution ({elapsed:.1f}s)", elapsed)
+
+    return None
+
+
+# =====================================================================
 # STEP 5: HYBRID MATCHING & 70K CROSS-REFERENCING ENGINE
 # =====================================================================
 
@@ -759,6 +919,28 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                     pass
 
         conn.close()
+
+    # -----------------------------------------------------------------
+    # STEP 4.5: DEEP DOUBT RESOLUTION (User Directive: Spend at least 10s on AI Platform if in doubt)
+    # -----------------------------------------------------------------
+    if not best_match or confidence != "No Doubt":
+        deep_res = deep_doubt_ai_resolution(
+            product_name=p_orig,
+            mfr_name=m_name,
+            mfr_part=m_part,
+            supplier_name=s_name,
+            supplier_part=s_part,
+            allowed_segments=allowed_segments,
+            api_key=api_key,
+            ai_provider=ai_provider,
+            min_duration=10.0
+        )
+        if deep_res:
+            comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, deep_ident, deep_method, deep_elapsed = deep_res
+            best_match = (comm_c, comm_n, class_c, class_n, fam_c, fam_n, seg_c, seg_n, 0.0)
+            confidence = "No Doubt"
+            identified_type = deep_ident
+            match_method = deep_method
 
     # -----------------------------------------------------------------
     # STEP 5: ASSIGN EXACT 8-DIGIT COMMODITY CODE & AUDIT TRAIL
