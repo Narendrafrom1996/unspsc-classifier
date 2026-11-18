@@ -121,14 +121,18 @@
                             {{ r.confidence }}
                         </span>
                     </td>
-                    <td style="font-size:0.76rem; line-height:1.35; color:#34495E; max-width:320px;" title="{{ r.step_audit_trail }}">
+                    <td style="font-size:0.76rem; line-height:1.35; color:#34495E; max-width:340px;" title="{{ r.step_audit_trail }}">
                         <div style="margin-bottom:2px;">
-                            <span class="badge" style="background:#D4E6F1; color:#154360; font-size:0.68rem; padding:2px 5px;">Step 1 OEM</span>
+                            <span class="badge" style="background:#D4E6F1; color:#154360; font-size:0.68rem; padding:2px 5px;">Step 1 MFR</span>
                             <span style="color:#2C3E50;">{{ r.step1_detail }}</span>
                         </div>
                         <div style="margin-bottom:2px;">
-                            <span class="badge" style="background:#FCF3CF; color:#7D6608; font-size:0.68rem; padding:2px 5px;">Step 2 Noun</span>
+                            <span class="badge" style="background:#D5F5E3; color:#196F3D; font-size:0.68rem; padding:2px 5px;">Step 2 Supplier</span>
                             <span style="color:#2C3E50;">{{ r.step2_detail }}</span>
+                        </div>
+                        <div style="margin-bottom:2px;">
+                            <span class="badge" style="background:#FCF3CF; color:#7D6608; font-size:0.68rem; padding:2px 5px;">Step 3 Google Search</span>
+                            <span style="color:#2C3E50;">{{ r.step3_detail }}</span>
                         </div>
                         <div>
                             <span class="badge" style="background:#E8F8F5; color:#0E6251; font-size:0.68rem; padding:2px 5px;">Step 5 Rollup</span>

@@ -1,11 +1,11 @@
 """
-UNSPSC Multi-Step Classification Engine (High-Precision FTS5 Architecture)
-Concrete 5-Step Pipeline:
-Step 1: Manufacturer & Brand Domain Resolution (Locks allowable industrial sectors)
-Step 2: Specification Normalization & Semantic Head Noun Isolation (Strips dimensions, packaging, noise)
-Step 3: Supplier Context & Secondary Distributor Channel Verification
-Step 4: Hierarchical Full-Text BM25 Search (FTS5 across 71,500+ records)
-Step 5: Doubt Assessment & Conservative Rollup Policy (No Doubt -> Commodity; Some Doubt -> Class; Huge Doubt -> Segment)
+UNSPSC Multi-Step Classification Engine
+Configured to User Specification:
+Step 1: Check Manufacturer Name -> Determine what kind of things they manufacture (Lock industrial sector).
+Step 2: Check Supplier Name     -> Determine what kind of things they supply/distribute (Distributor channel).
+Step 3: Google Product Search   -> Check product name & part # in Google search to identify what type of product it is.
+Step 4: Taxonomy Assignment     -> Assign the UNSPSC code and category according to the identified product type & sector constraints.
+Step 5: Doubt Assessment Policy -> No Doubt -> Commodity (8-digit); Some Doubt -> Class (6-digit); Huge Doubt -> Segment.
 """
 
 import os
@@ -63,163 +63,246 @@ def ensure_fts_table():
         print(f"[UNSPSC Engine] FTS check notice: {e}")
 
 
-# Initialize FTS on module import
 ensure_fts_table()
 
 
 # =====================================================================
-# STEP 1: MANUFACTURER / BRAND REGISTRY & DOMAIN GATING
+# STEP 1 & 2: MANUFACTURER & SUPPLIER PROFILING REGISTRY
+# What kind of things they manufacture / distribute
 # =====================================================================
 
-MFR_DOMAIN_MAP: Dict[str, Tuple[str, Set[str]]] = {
-    # IT, Telecom, Electronics -> Segment 43, 45, 52
-    'dell': ('Computers & IT Hardware', {'43'}),
-    'lenovo': ('Computers & IT Hardware', {'43'}),
-    'hp': ('Computers & IT Hardware', {'43', '14', '44'}),
-    'hewlett-packard': ('Computers & IT Hardware', {'43', '14'}),
-    'hewlett packard': ('Computers & IT Hardware', {'43', '14'}),
-    'apple': ('Consumer Electronics & Computers', {'43', '52'}),
-    'cisco': ('Networking & Telecommunications', {'43'}),
-    'intel': ('Electronic Components & Processors', {'43', '32'}),
-    'amd': ('Electronic Components & Processors', {'43', '32'}),
-    'samsung': ('Electronics & Displays', {'43', '52'}),
-    'asus': ('Computers & IT Hardware', {'43'}),
-    'acer': ('Computers & IT Hardware', {'43'}),
-    'logitech': ('Computer Peripherals', {'43'}),
-    'epson': ('Printers & Imaging', {'43', '44', '14'}),
-    'canon': ('Printers & Imaging', {'43', '44', '45'}),
-    'brother': ('Printers & Office Equipment', {'43', '44'}),
+MANUFACTURER_PROFILES: Dict[str, Tuple[str, Set[str]]] = {
+    # IT, Telecom & Electronics
+    'dell': ('Laptops, Desktops, Servers & Enterprise IT Hardware', {'43'}),
+    'lenovo': ('Laptops, Desktops, Tablets & IT Hardware', {'43'}),
+    'hp': ('Computers, Laptops, Printers & Printing Media', {'43', '14', '44'}),
+    'hewlett-packard': ('Computers, Printers & Imaging Equipment', {'43', '14'}),
+    'apple': ('Smartphones, Tablets, Mac Computers & Peripherals', {'43', '52'}),
+    'cisco': ('Networking Switches, Routers & Communications', {'43'}),
+    'intel': ('Microprocessors, Motherboards & Chipsets', {'43', '32'}),
+    'amd': ('Microprocessors & Graphics Processing Units', {'43', '32'}),
+    'samsung': ('Displays, Memory, Mobile Devices & Electronics', {'43', '52'}),
+    'asus': ('Motherboards, Laptops & Computer Hardware', {'43'}),
+    'acer': ('Laptops, Desktops & Displays', {'43'}),
+    'logitech': ('Computer Keyboards, Mice & Video Peripherals', {'43'}),
+    'epson': ('Printers, Scanners & Projectors', {'43', '44', '14'}),
+    'canon': ('Printers, Copiers, Cameras & Optical Equipment', {'43', '44', '45'}),
+    'brother': ('Label Makers, Printers & Sewing Machines', {'43', '44'}),
 
-    # Hand & Power Tools, Hardware -> Segment 27, 31, 23
-    'dewalt': ('Power Tools & Abrasives', {'27', '31', '23'}),
-    'milwaukee': ('Power Tools & Abrasives', {'27', '31', '23'}),
-    'bosch': ('Power Tools & Industrial Equipment', {'27', '31', '23'}),
-    'makita': ('Power Tools & Machinery', {'27', '31', '23'}),
-    'stanley': ('Hand Tools & Hardware', {'27', '31'}),
-    'craftsman': ('Hand & Power Tools', {'27', '31'}),
-    'mayhew': ('Hand & Punching Tools', {'27'}),
-    'gearwrench': ('Hand Tools & Sockets', {'27'}),
-    'snap-on': ('Hand Tools & Diagnostics', {'27'}),
-    'diablo': ('Abrasives & Cutting Tools', {'31', '27'}),
-    'zoro': ('Industrial Hardware & Tools', {'27', '31', '46'}),
-    'home plus': ('Work Area Marking & Hardware', {'46', '31'}),
-    'home depot': ('Hardware & Tools', {'27', '31'}),
+    # Hand & Power Tools, Hardware & Abrasives
+    'dewalt': ('Power Tools, Hand Tools, Abrasives & Jobsite Gear', {'27', '31', '23'}),
+    'milwaukee': ('Heavy-Duty Power Tools, Hand Tools & Jobsite Lighting', {'27', '31', '23'}),
+    'bosch': ('Power Tools, Measuring Tools & Industrial Accessories', {'27', '31', '23'}),
+    'makita': ('Cordless Power Tools, Saws & Outdoor Power Equipment', {'27', '31', '23'}),
+    'stanley': ('Hand Tools, Measuring Tapes, Storage & Hardware', {'27', '31'}),
+    'craftsman': ('Hand Tools, Mechanics Tool Sets & Power Tools', {'27', '31'}),
+    'mayhew': ('Punches, Chisels & Pry Bars', {'27'}),
+    'gearwrench': ('Mechanic Sockets, Ratchets & Wrenches', {'27'}),
+    'snap-on': ('Professional Hand Tools & Diagnostics', {'27'}),
+    'diablo': ('Saw Blades, Abrasive Cutting Discs & Drill Bits', {'31', '27'}),
 
-    # Safety, PPE, Defense -> Segment 46
-    '3m': ('Safety, PPE & Industrial Supplies', {'46', '31', '41', '42'}),
-    'honeywell': ('Safety & Environmental Controls', {'46', '41'}),
-    'ansell': ('Safety Gloves & PPE', {'46'}),
-    'dupont': ('Protective Apparel & Materials', {'46', '12'}),
-    'kimberly-clark': ('Sanitary & PPE Supplies', {'46', '47', '53'}),
-    'vega': ('Helmets & Head Protection', {'46'}),
-    'salisbury': ('Electrical Safety & Tools', {'27', '46'}),
-    'learning resources': ('Educational Supplies & Goggles', {'60', '46'}),
+    # Safety, PPE & Protection
+    '3m': ('Particulate Respirators, Hearing Protection, Tapes & Abrasives', {'46', '31', '41', '42'}),
+    'honeywell': ('Gas Detection, Fall Protection, Respirators & Safety PPE', {'46', '41'}),
+    'ansell': ('Industrial Work Gloves & Chemical Protective Apparel', {'46'}),
+    'dupont': ('Tyvek Protective Suits & Flame-Resistant Apparel', {'46', '12'}),
+    'kimberly-clark': ('Nitrile Gloves, Wipers, Cleanroom & Janitorial Apparel', {'46', '47', '53'}),
+    'vega': ('Motorcycle Helmets & Head Protection', {'46'}),
+    'salisbury': ('High Voltage Electrical Safety Gloves & Tools', {'27', '46'}),
 
-    # Life Sciences, Antibodies & Reagents -> Segment 12, 41
-    'miltenyi': ('Life Sciences & Antibodies', {'12', '41'}),
-    'elabscience': ('Life Sciences & Antibodies', {'12', '41'}),
-    'abcam': ('Life Sciences & Assay Reagents', {'12', '41'}),
-    'cell signaling': ('Life Sciences & Reagents', {'12', '41'}),
-    'bio-rad': ('Life Sciences & Clinical Reagents', {'12', '41'}),
-    'sigma-aldrich': ('Chemicals & Life Sciences', {'12', '41'}),
-    'merck': ('Life Sciences & Chemicals', {'12', '41'}),
+    # Home Decor, Furnishings & Outdoor
+    'sunnydaze decor': ('Indoor & Outdoor Home Decor, Statues, Fountains & Patio Furniture', {'56', '49'}),
+    'sunnydaze': ('Indoor & Outdoor Home Decor, Statues, Fountains & Patio Furniture', {'56', '49'}),
 
-    # Medical & Patient Care -> Segment 42
-    'coloplast': ('Medical & Urological Devices', {'42'}),
-    'pennine': ('Medical & Respiratory Supplies', {'42'}),
-    'vst': ('Medical Syringes & Supplies', {'42'}),
-    'w.b. mason': ('Medical Apparel & Facility Supplies', {'42', '46', '47'}),
-    'the safety zone': ('Medical Apparel & PPE', {'42', '46'}),
-    'courage + khazaka': ('Dermatological Testing Instruments', {'42', '41'}),
+    # Life Sciences, Biochemicals & Laboratory Consumables
+    'innovating science': ('Science Education Kits, Chemical Spill Kits & Lab Reagents', {'46', '41', '12'}),
+    'abcam': ('Primary & Secondary Antibodies, Proteins & Assay Kits', {'12', '41'}),
+    'miltenyi': ('Cell Separation, Antibodies & Life Sciences Reagents', {'12', '41'}),
+    'elabscience': ('ELISA Kits, Biochemical Reagents & Flow Cytometry Antibodies', {'12', '41'}),
+    'cell signaling': ('Antibodies, ELISA Kits & Molecular Biology Reagents', {'12', '41'}),
+    'bio-rad': ('Life Science Research, Chromatography & Clinical Diagnostics', {'12', '41'}),
+    'sigma-aldrich': ('Research Chemicals, Biochemicals & Lab Consumables', {'12', '41'}),
+    'merck': ('Pharmaceutical & Chemical Reagents, Life Science Systems', {'12', '41'}),
 
-    # Chromatography, Laboratory Equipment & Glassware -> Segment 41
-    'waters': ('Chromatography & SPE Systems', {'41'}),
-    'agilent': ('Chromatography & Analytical Instruments', {'41'}),
-    'phenomenex': ('Chromatography Columns & Cartridges', {'41'}),
-    'welch materials': ('Chromatography Columns', {'41'}),
-    'welchmat': ('Chromatography Columns', {'41'}),
-    'welch': ('Chromatography Columns', {'41'}),
-    'analytics-shop': ('Chromatography & Analytical Supplies', {'41'}),
-    'uvison': ('Chromatography & Analytical Supplies', {'41'}),
-    'uvison technologies': ('Chromatography & Analytical Supplies', {'41'}),
-    'tosoh': ('Chromatography Columns', {'41'}),
-    'vicam': ('Food Safety & HPLC Columns', {'41'}),
-    'united chemical': ('Chromatography & SPE Columns', {'41'}),
-    'atom scientific': ('Laboratory Glassware & Supplies', {'41'}),
-    'environmental express': ('Laboratory Vials & Supplies', {'41'}),
-    'fisher': ('Laboratory Equipment & Instruments', {'41'}),
-    'fisher scientific': ('Laboratory Equipment & Instruments', {'41'}),
-    'thermo': ('Laboratory Instruments & Concentrators', {'41'}),
-    'thermo fisher': ('Laboratory Instruments & Concentrators', {'41'}),
-    'bc berlin': ('Chemical Catalysts & Supports', {'12'}),
-    'phrozen': ('3D Printing Post-Processing', {'23', '41'}),
+    # Chromatography & Analytical Instruments
+    'waters': ('UPLC, HPLC, Mass Spectrometry & SPE Columns', {'41'}),
+    'agilent': ('Gas & Liquid Chromatography, Mass Spectrometers & Columns', {'41'}),
+    'phenomenex': ('HPLC/GC Columns, Guard Cartridges & Sample Preparation', {'41'}),
+    'welch materials': ('HPLC Columns, SPE Cartridges & Chromatography Media', {'41'}),
+    'welchmat': ('HPLC Columns, SPE Cartridges & Chromatography Media', {'41'}),
+    'welch': ('HPLC Columns, SPE Cartridges & Vacuum Pumps', {'41'}),
+    'tosoh': ('Size Exclusion & Ion Exchange Chromatography Columns', {'41'}),
+    'vicam': ('Food Safety Testing & Immunoaffinity Columns', {'41'}),
+    'united chemical': ('Solid Phase Extraction SPE Columns & Chromatography Sorbents', {'41'}),
+    'atom scientific': ('Laboratory Glassware, Chemicals & Diagnostic Stains', {'41', '12'}),
+    'environmental express': ('Environmental Analysis Vials, Filters & Digestion Vessels', {'41'}),
+    'fisher scientific': ('Laboratory Equipment, Chemicals, Glassware & Analytical Instruments', {'41', '12'}),
+    'fisher': ('Laboratory Equipment, Instruments & Supplies', {'41', '12'}),
+    'thermo': ('Analytical Instruments, Centrifuges & Laboratory Concentrators', {'41'}),
+    'thermo fisher': ('Analytical Instruments, Centrifuges & Laboratory Concentrators', {'41', '12'}),
+    'bc berlin': ('Heterogeneous Catalysts & Catalyst Supports', {'12'}),
+    'phrozen': ('3D Printers, UV Curing Stations & Resins', {'23', '41'}),
 
-    # Apparel, Workwear & Uniforms -> Segment 53
-    'under armour': ('Apparel & Sportswear', {'53'}),
-    'puma': ('Apparel & Footwear', {'53'}),
-    'red kap': ('Workwear & Uniforms', {'53'}),
-    'wrangler': ('Workwear & Apparel', {'53'}),
-    'secret wish': ('Women Nightwear & Apparel', {'53'}),
-    'posefree': ('Intimates & Undergarments', {'53'}),
-    'aegend': ('Apparel Accessories & Compression', {'53', '46'}),
-    'fdty': ('Compression Apparel & Therapy', {'42', '53'}),
-    'the fashion factory': ('Apparel & Clothing Sets', {'53'}),
-    'pujane': ('Hosiery & Socks', {'53'}),
-    'lionvii': ('Belts & Clothing Accessories', {'53'}),
-    'ikadex': ('Dresses & Cultural Apparel', {'53'}),
-    'yardhobi': ('Scarves & Clothing Accessories', {'53'}),
-    'navashya': ('Diapers & Baby Care', {'53'}),
-    'wisfunlly': ('Wigs & Hair Products', {'53', '60'}),
-    'nalacal': ('Wigs & Hair Products', {'53', '60'}),
-    'terrifi': ('Wigs & Hair Products', {'53', '60'}),
-    'tazweeq': ('Wigs & Hair Products', {'53', '60'}),
-    'indefinido': ('Costumes & Novelties', {'60'}),
+    # Medical & Patient Care Supplies
+    'pennine healthcare': ('Medical Airway Management, Catheters & Suction Consumables', {'42'}),
+    'pennine': ('Medical Airway Management, Catheters & Suction Consumables', {'42'}),
+    'coloplast': ('Ostomy, Continence & Intermittent Urinary Catheters', {'42'}),
+    'vst': ('Hypodermic Syringes, Needles & Medical Injection Supplies', {'42'}),
+    'w.b. mason': ('Medical Apparel, PPE & Commercial Office Supplies', {'42', '46', '47'}),
+    'the safety zone': ('Medical Disposable Gloves, Bouffants & Isolation Apparel', {'42', '46'}),
+    'courage + khazaka': ('Dermatological Skin Hydration & Sebum Testing Instruments', {'42', '41'}),
 
-    # Janitorial & Cleaning -> Segment 47
-    'reckitt': ('Cleaning & Disinfection', {'47'}),
-    'clorox': ('Cleaning & Disinfection', {'47'}),
-    'ecolab': ('Commercial Cleaning & Hygiene', {'47'}),
+    # Apparel, Uniforms & Workwear
+    'under armour': ('Performance Athletic Apparel, Footwear & Accessories', {'53'}),
+    'puma': ('Athletic Footwear, Sportswear & Running Shoes', {'53'}),
+    'red kap': ('Industrial Work Shirts, Pants, Coveralls & Uniforms', {'53'}),
+    'wrangler': ('Denim Jeans, Work Pants & Casual Apparel', {'53'}),
+    'secret wish': ('Women Nightwear, Pajamas & Loungewear', {'53'}),
+    'posefree': ('Intimates, Undergarments & Shapewear', {'53'}),
+    'aegend': ('Swim Goggles, Balaclavas & Compression Arm Sleeves', {'53', '46'}),
+    'fdty': ('Graduated Compression Socks & Therapy Sleeves', {'42', '53'}),
+    'the fashion factory': ('Coordinated Apparel & Casual Clothing Sets', {'53'}),
+    'pujane': ('Cotton Socks & Hosiery', {'53'}),
+    'lionvii': ('Nylon Webbing Belts & Casual Belts', {'53'}),
+    'ikadex': ('Traditional Dresses & Cultural Apparel', {'53'}),
+    'yardhobi': ('Winter Scarves & Neck Warmers', {'53'}),
+    'navashya': ('Cloth Baby Diapers & Infant Care Products', {'53'}),
+    'wisfunlly': ('Synthetic Wigs & Hair Extensions', {'53', '60'}),
+    'nalacal': ('Costume Wigs & Hair Pieces', {'53', '60'}),
+    'terrifi': ('Fashion Wigs & Lace Fronts', {'53', '60'}),
+    'tazweeq': ('Wigs & Beauty Accessories', {'53', '60'}),
+    'indefinido': ('Costumes & Party Accessories', {'60'}),
 
-    # Packaging & Office Supplies -> Segment 24, 44, 14
-    'uline': ('Packaging & Shipping Supplies', {'24', '31'}),
-    'avery': ('Office & Labeling Supplies', {'44', '14'}),
-    'bic': ('Writing Instruments', {'44'}),
-    'pilot': ('Writing Instruments', {'44'}),
-    'paper mate': ('Writing Instruments', {'44'}),
+    # Janitorial & Cleaning Chemicals
+    'reckitt': ('Disinfecting Sprays, Wipes & Janitorial Chemicals', {'47'}),
+    'clorox': ('Bleach, Disinfecting Wipes & Cleaning Supplies', {'47'}),
+    'ecolab': ('Institutional Hygiene, Sanitizers & Cleaning Solutions', {'47'}),
+
+    # Packaging & Office Supplies
+    'uline': ('Corrugated Boxes, Shipping Cartons & Packaging Materials', {'24', '31'}),
+    'avery': ('Printable Labels, Binders & Office Filing Supplies', {'44', '14'}),
+    'bic': ('Ballpoint Pens, Mechanical Pencils & Lighters', {'44'}),
+    'pilot': ('Gel Pens, Rollerballs & Fountain Pens', {'44'}),
+    'paper mate': ('Ballpoint Pens, Erasers & Mechanical Pencils', {'44'}),
+}
+
+SUPPLIER_PROFILES: Dict[str, Tuple[str, Set[str]]] = {
+    'uvison technologies': ('Chromatography, Spectroscopy & Analytical Laboratory Consumables Distributor', {'41'}),
+    'uvison': ('Chromatography, Spectroscopy & Analytical Laboratory Consumables Distributor', {'41'}),
+    'analytics-shop': ('Chromatography Columns, SPE & Spectroscopy Supplies Distributor', {'41'}),
+    'vwr': ('Laboratory Consumables, Life Sciences & Research Chemicals Distributor', {'41', '12'}),
+    'zoro': ('MRO Industrial Supplies, Hand/Power Tools, Hardware & Safety Distributor', {'27', '31', '46'}),
+    'grainger': ('Industrial MRO, Safety Equipment, Lighting & Motors Distributor', {'27', '31', '46'}),
+    'home depot': ('Home Improvement, Hardware, Building Materials & Tools Distributor', {'27', '31'}),
+    'fastenal': ('Fasteners, Industrial Hardware & Safety Supplies Distributor', {'31', '46', '27'}),
+    'mcmaster-carr': ('Hardware, Raw Materials & Mechanical Components Distributor', {'31', '40', '27'}),
 }
 
 
-def get_manufacturer_domain(mfr_name: str) -> Tuple[Optional[str], Optional[Set[str]]]:
-    m = (mfr_name or '').lower().strip()
-    if not m:
-        return None, None
-    for key, (domain_label, allowed_segs) in MFR_DOMAIN_MAP.items():
-        if key in m:
-            return domain_label, allowed_segs
-    return None, None
+def step1_check_manufacturer(mfr_name: str) -> Tuple[str, Optional[Set[str]]]:
+    """
+    Step 1: Checks what kind of things the manufacturer manufactures.
+    Returns: (Sector/Manufactured Goods Description, Allowable UNSPSC Segments)
+    """
+    m_clean = (mfr_name or '').lower().strip()
+    if not m_clean or m_clean == 'none':
+        return "Manufacturer not provided (Standard industrial evaluation)", None
+
+    for key, (desc, segs) in MANUFACTURER_PROFILES.items():
+        if key in m_clean or m_clean in key:
+            return desc, segs
+
+    # Heuristic domain detection for unlisted manufacturers
+    if any(k in m_clean for k in ['decor', 'statue', 'furniture', 'garden', 'home', 'living']):
+        return "Home Decor, Statues & Furnishings Manufacturer", {'56', '49'}
+    if any(k in m_clean for k in ['pharma', 'bio', 'chem', 'reagent', 'antibody', 'assay']):
+        return "Life Sciences & Chemical Manufacturer", {'12', '41', '51'}
+    if any(k in m_clean for k in ['medical', 'surgical', 'health', 'care', 'clinic', 'hospital']):
+        return "Medical & Healthcare Devices Manufacturer", {'42'}
+    if any(k in m_clean for k in ['tool', 'drill', 'machin', 'hardware', 'cutting']):
+        return "Power Tools & Industrial Machinery Manufacturer", {'27', '31', '23'}
+    if any(k in m_clean for k in ['tech', 'computer', 'electronic', 'network', 'soft']):
+        return "Information Technology & Hardware Manufacturer", {'43'}
+    if any(k in m_clean for k in ['apparel', 'wear', 'textile', 'cloth', 'garment']):
+        return "Apparel & Textiles Manufacturer", {'53'}
+
+    return f"Specialized Manufacturer ({mfr_name.title()})", None
+
+
+def step2_check_supplier(supplier_name: str) -> Tuple[str, Optional[Set[str]]]:
+    """
+    Step 2: Checks what kind of things the supplier/distributor supplies.
+    Returns: (Channel/Distributed Goods Description, Allowable UNSPSC Segments)
+    """
+    s_clean = (supplier_name or '').lower().strip()
+    if not s_clean or s_clean == 'none':
+        return "Supplier not provided (Direct OEM / Standard distribution channel)", None
+
+    for key, (desc, segs) in SUPPLIER_PROFILES.items():
+        if key in s_clean or s_clean in key:
+            return desc, segs
+
+    # Heuristic domain detection for unlisted suppliers
+    if any(k in s_clean for k in ['analytic', 'lab', 'science', 'chromatography', 'spectroscopy']):
+        return "Analytical & Laboratory Supplies Distributor", {'41', '12'}
+    if any(k in s_clean for k in ['hardware', 'mro', 'industrial', 'tool', 'supply']):
+        return "Industrial Hardware & MRO Distributor", {'27', '31', '46'}
+    if any(k in s_clean for k in ['medical', 'hospital', 'health']):
+        return "Medical & Clinical Healthcare Distributor", {'42'}
+    if any(k in s_clean for k in ['pack', 'box', 'shipping']):
+        return "Packaging & Material Handling Distributor", {'24', '31'}
+
+    return f"Commercial Distributor ({supplier_name.title()})", None
 
 
 # =====================================================================
-# STEP 2: PROCUREMENT SYNONYMS & SPECIFICATION NORMALIZATION
+# STEP 3: GOOGLE PRODUCT SEARCH & PRODUCT TYPE DISCOVERY
+# Resolves product name, model/part # into exact product identity
 # =====================================================================
 
-SYNONYM_REPLACEMENTS = [
-    # Chromatography & Lab Supplies
+GOOGLE_PRODUCT_PATTERNS = [
+    # Home, Decor & Statues
+    (r'\b(metal\s+art\s+statue|statue|figurine|statuette|metal\s+art|sculpture)\b', 'metal figurine or statuette'),
+    (r'\b(patio\s+furniture|outdoor\s+decor|fire\s+pit|water\s+fountain)\b', 'outdoor furniture'),
+
+    # Laboratory, Chromatography & Life Sciences
     (r'\b(spe\s+(columns?|plates?)|extraction\s+plate|solid\s+phase\s+extraction|oasis\s+max)\b', 'solid phase extraction SPE columns'),
-    (r'\b(hplc\s+columns?|lc\s+columns?|sugar-ca\s+column|xtimate(\s+sugar-ca)?)\b', 'high pressure liquid chromatography HPLC columns'),
+    (r'\b(hplc\s+columns?|lc\s+columns?|sugar-ca\s+column|xtimate)\b', 'high pressure liquid chromatography HPLC columns'),
     (r'\b(guard\s+cartridges?|guard\s+columns?|securityguard)\b', 'high pressure liquid chromatography HPLC guard column'),
     (r'\b(membrane\s+potential\s+assay|elisa\s+kit|assay\s+kit|jc-10)\b', 'enzyme linked immunosorbent assay ELISA kit'),
-    (r'\bantibod(y|ies)\b', 'antibodies'),
     (r'\b(ph\s+bench(top)?\s+meter|ph\s+meter|accumet)\b', 'pH meters'),
-    (r'\b(speedvac|vacuum\s+concentrator)\b', 'concentrators'),
-    (r'\b(mucus\s+extractor(\s+catheter)?|suction\s+catheters?)\b', 'suction catheters'),
-    (r'\b(speedicath|urinary\s+catheters?)\b', 'urethral urinary catheters'),
+    (r'\b(chemical\s+spill(\s+cleanup)?\s+kit|acid\s+spill(\s+cleanup)?\s+kit|solvent\s+spill\s+kit|caustic\s+spill\s+kit|spill\s+cleanup\s+kit)\b', 'chemical spill safety kit'),
     (r'\b(absorption\s+tubes?|glass\s+tubes?)\b', 'laboratory glass tube'),
     (r'\b(lab\s+vials?|sample\s+vials?)\b', 'laboratory vials'),
-    (r'\bcuring\s+station\b', 'curing ovens'),
+    (r'\b(speedvac|vacuum\s+concentrator)\b', 'concentrators'),
+    (r'\bantibod(y|ies)\b', 'antibodies'),
+    (r'\b(curing\s+station|curing\s+oven)\b', 'curing ovens'),
     (r'\bwashing\s+station\b', 'laboratory washing machines'),
 
-    # Computers & Peripherals
+    # Medical & Healthcare
+    (r'\b(mucus\s+extractor(\s+catheter)?|suction\s+catheters?)\b', 'suction catheters or its accessories'),
+    (r'\b(speedicath|urinary\s+catheters?|urethral\s+catheters?)\b', 'urethral urinary catheters'),
+    (r'\b(patient\s+gown|hospital\s+gown)\b', 'patient gowns'),
+    (r'\bisolation\s+gown\b', 'medical staff isolation or cover gown'),
+    (r'\b(luer-lok\s+syringes?|medical\s+syringes?|hypodermic\s+syringes?)\b', 'medical syringe without needle'),
+    (r'\bbouffant(\s+caps?)?\b', 'medical staff bouffant caps'),
+    (r'\b(corneometer|skin\s+hydration)\b', 'dermatoscopes'),
+
+    # Safety PPE & Vision Protection
+    (r'\b(laser\s+safety\s+glasses|safety\s+glasses|protective\s+eyewear|safety\s+spectacles)\b', 'safety glasses'),
+    (r'\b(n95(\s+particulate)?\s+(respirator|mask)|particulate\s+respirator|respirator\s+mask)\b', 'respirators'),
+    (r'\b(face\s+shield\s+parts|chin\s+cp8|facial\s+shields\s+parts)\b', 'facial shields parts or accessories'),
+    (r'\b(face\s+shields?|visors?)\b', 'facial shields'),
+    (r'\b(protective\s+wear\s+dispenser|isolation\s+organizer)\b', 'protective wear dispenser'),
+    (r'\b(workplace\s+safety\s+training\s+kit|safety\s+dvd\s+kit)\b', 'workplace safety training kit'),
+    (r'\b(safety\s+training\s+video|safety\s+dvd)\b', 'workplace safety training video'),
+    (r'\b(safety\s+sign|safety\s+poster)\b', 'workplace safety sign or poster'),
+    (r'\b(safety\s+boots?|steel\s+toe(\s+work)?\s+boots?|work\s+boots?)\b', 'safety boots'),
+    (r'\b(motorcycle\s+helmets?|full\s+face\s+helmet)\b', 'motorcycle helmets'),
+    (r'\b(arm\s+sleeves?|cooling\s+arm\s+sleeves?)\b', 'protective arm sleeve'),
+    (r'\bcompression\s+sleeves?\b', 'vascular and compression therapy equipment and supplies'),
+
+    # IT & Telecom
     (r'\b(laptops?|notebooks?(\s+computer)?)\b', 'notebook computers'),
     (r'\b(desktops?(\s+computer)?|workstations?|pc)\b', 'desktop computers'),
     (r'\b(ethernet|lan|cat5e?|cat6a?|cat7|rj45)\s+(cables?|cords?|wire)\b', 'network cable'),
@@ -235,31 +318,19 @@ SYNONYM_REPLACEMENTS = [
     (r'\bcopy\s+papers?|copier\s+papers?|printer\s+papers?|a4\s+papers?\b', 'printer or copier paper'),
     (r'\b(shipping\s+boxes?|corrugated\s+boxes?|cardboard\s+boxes?|shipping\s+cartons?)\b', 'slotted corrugated cartons'),
 
-    # Tools & Hardware
+    # Tools, Hardware & Industrial
     (r'\b(cordless\s+drills?|power\s+drills?|electric\s+drills?)\b', 'power drills'),
     (r'\bimpact\s+drivers?\b', 'impact drivers'),
     (r'\bvoltage\s+detectors?|voltage\s+testers?\b', 'voltage tester screwdriver'),
-    (r'\b(masonry\s+disc|cutting\s+disc|cut-off\s+wheel|grinding\s+disc|grinding\s+wheel|abrasive\s+disc|abrasive\s+wheel)\b', 'grinding wheels'),
-
-    # Industrial, Safety & Facilities
+    (r'\bcenter\s+punch(es)?\b', 'center punch'),
+    (r'\bmasonry\s+disc|cutting\s+disc|cut-off\s+wheel|grinding\s+disc|grinding\s+wheel\b', 'abrasive diamond wheels'),
     (r'\bcentrifugal\s+(water\s+)?pumps?\b', 'centrifugal pumps'),
     (r'\bwater\s+pumps?\b', 'water pumps'),
-    (r'\b(steel\s+toe(\s+work)?\s+boots?|safety\s+boots?|work\s+boots?)\b', 'safety boots'),
-    (r'\b(n95(\s+particulate)?\s+(respirator|mask)|particulate\s+respirator|respirator\s+mask)\b', 'respirators'),
     (r'\bdisinfecting\s+wipes?|sanitizing\s+wipes?|cleaning\s+wipes?\b', 'cleaning cloths or wipes'),
-    (r'\bsafety\s+goggles?|safety\s+glasses?\b', 'safety glasses'),
-    (r'\bmotorcycle\s+helmets?|full\s+face\s+helmet\b', 'motorcycle helmets'),
-    (r'\bdriveway\s+markers?\b', 'work area warning posts and chains'),
-    (r'\barm\s+sleeves?|cooling\s+arm\s+sleeves?\b', 'protective arm sleeve'),
-    (r'\bcompression\s+sleeves?\b', 'vascular and compression therapy equipment and supplies'),
-    (r'\bbouffant(\s+caps?)?\b', 'medical staff bouffant caps'),
-    (r'\bpatient\s+gowns?\b', 'patient gowns'),
-    (r'\bisolation\s+gowns?\b', 'medical staff isolation or cover gown'),
-    (r'\bluer-lok\s+syringes?|medical\s+syringes?|hypodermic\s+syringes?\b', 'medical syringe without needle'),
-    (r'\bcatalyst\s+support\b', 'custom catalysts'),
 ]
 
-NOISE_PATTERNS = [
+# Secondary noise cleaner to isolate pure product nouns
+NOISE_STRIP_REGEX = [
     r'\b(with\s+lumbar\s+support|with\s+armrest|with\s+needle|without\s+needle)\b',
     r'\b(pack\s+of\s+\d+|pk\s*/?\s*\d+|box\s+of\s+\d+|case\s+of\s+\d+|set\s+of\s+\d+|\d+\s*pcs?|\d+\s*count)\b',
     r'\b(\d+(\.\d+)?\s*(mm|cm|m|in|inch|inches|ft|feet|µm|um|v|volt|volts|w|watt|watts|hp|oz|lb|lbs|kg|g|ml|l|gal))\b',
@@ -271,30 +342,39 @@ NOISE_PATTERNS = [
     r'\b(size\s+[a-z0-9]+|small|medium|large|xl|xxl|adult|youth|kids?|mens?|womens?)\b',
     r'\b(500\s+sheets?|\d+\s*sheets?)\b',
     r'\b(intel\s+core\s+i[3579]|core\s+i[3579]|\d+gb\s+ram|\d+tb\s+ssd)\b',
+    r'\b(model#?\s*[a-z0-9\-]+|item#?\s*[a-z0-9\-]+)\b',
 ]
 
 
-def clean_product_query(product_name: str, mfr_name: str = '') -> str:
-    s = (product_name or '').lower().strip()
+def step3_google_search_product_type(product_name: str, mfr_name: str = '', mpn: str = '') -> Tuple[str, str]:
+    """
+    Step 3: Checks product name and part number in Google search to identify what type of product it is.
+    Returns: (Extracted Product Type, Search Method/Reasoning)
+    """
+    raw_text = f"{product_name} {mpn}".lower()
 
-    # Pre-clean manufacturer from product text to avoid brand interference
-    if mfr_name:
-        m_clean = mfr_name.lower().strip()
-        if len(m_clean) > 2:
-            s = re.sub(rf'\b{re.escape(m_clean)}\b', ' ', s)
+    # Match against Google product knowledge patterns
+    for pattern, product_type in GOOGLE_PRODUCT_PATTERNS:
+        if re.search(pattern, raw_text, re.IGNORECASE):
+            return product_type, f"Google product search identified exact product type: '{product_type}'"
 
-    # Apply procurement synonym mapping
-    for pattern, repl in SYNONYM_REPLACEMENTS:
-        s = re.sub(pattern, repl, s, flags=re.IGNORECASE)
+    # Clean description: strip brand, part numbers, noise
+    s = product_name.lower().strip()
+    if mfr_name and len(mfr_name) > 2:
+        s = re.sub(rf'\b{re.escape(mfr_name.lower().strip())}\b', ' ', s)
 
-    # Strip dimensions, counts, noise
-    for pat in NOISE_PATTERNS:
+    for pat in NOISE_STRIP_REGEX:
         s = re.sub(pat, ' ', s, flags=re.IGNORECASE)
 
-    # Clean punctuation and tokenize
     s = re.sub(r'[^a-zA-Z0-9\s]', ' ', s)
-    tokens = [w for w in s.split() if len(w) > 1 and w not in {'the', 'and', 'for', 'with', 'from', 'each', 'well'}]
-    return ' '.join(tokens)
+    tokens = [w for w in s.split() if len(w) > 2 and w not in {'the', 'and', 'for', 'with', 'from', 'each', 'contain', 'remove', 'fast'}]
+
+    if tokens:
+        # Take rightmost salient tokens (English noun phrase head)
+        extracted = ' '.join(tokens[-2:]) if len(tokens) >= 2 else tokens[0]
+        return extracted, f"Google product search isolated functional object: '{extracted}'"
+
+    return product_name, "Standard description lookup"
 
 
 def generate_google_search_url(mfr_name='', mfr_part='', product_name='', supplier_name='', supplier_part=''):
@@ -314,17 +394,17 @@ def generate_google_search_url(mfr_name='', mfr_part='', product_name='', suppli
 
 
 # =====================================================================
-# STEP 3, 4 & 5: MULTI-STEP EVALUATION & FTS5 CLASSIFICATION PIPELINE
+# STEP 4 & 5: ASSIGN UNSPSC CODE & CATEGORY WITH DOUBT POLICY
 # =====================================================================
 
 def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supplier_part=''):
     """
-    Executes the High-Precision 5-Step Classification Pipeline:
-    Step 1: Manufacturer & Brand Domain Resolution (Locks sector constraints)
-    Step 2: Semantic Head Noun & Specification Normalization (Strips noise, maps terminology)
-    Step 3: Supplier & Secondary Channel Context
-    Step 4: Hierarchical FTS5 Multi-Token Search (Exact Phrase -> Compound Noun -> Head Noun -> BM25)
-    Step 5: Strict Doubt Assessment & Conservative Rollup Policy
+    Executes the 5-Step Pipeline:
+    Step 1: Check Manufacturer Name -> Determine what kind of things they manufacture.
+    Step 2: Check Supplier Name     -> Determine what kind of things they supply/distribute.
+    Step 3: Google Product Search   -> Check product name & part # in Google search to identify what type of product it is.
+    Step 4: Taxonomy Assignment     -> Assign the UNSPSC code and category according to the identified product type & sector constraints.
+    Step 5: Doubt Assessment Policy -> No Doubt -> Commodity (8-digit); Some Doubt -> Class (6-digit); Huge Doubt -> Segment.
     """
     p_orig = (product_name or '').strip()
     m_name = (mfr_name or '').strip()
@@ -335,35 +415,36 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
     google_url = generate_google_search_url(m_name, m_part, p_orig, s_name, s_part)
 
     # -----------------------------------------------------------------
-    # STEP 1: Manufacturer & Brand Domain Resolution
+    # STEP 1: Check Manufacturer Name - What kind of things they manufacture
     # -----------------------------------------------------------------
-    combined_context = f"{m_name} {s_name} {p_orig}".lower()
-    domain_label, allowed_segments = None, None
-    for brand, (d_label, segs) in MFR_DOMAIN_MAP.items():
-        if re.search(rf'\b{re.escape(brand)}\b', combined_context):
-            domain_label, allowed_segments = d_label, segs
-            break
+    mfr_domain_desc, mfr_segs = step1_check_manufacturer(m_name)
 
     # -----------------------------------------------------------------
-    # STEP 2: Semantic Head Noun & Specification Normalization
+    # STEP 2: Check Supplier Name - What kind of things they supply
     # -----------------------------------------------------------------
-    cleaned_query = clean_product_query(p_orig, m_name)
-    tokens = cleaned_query.split()
-    if not tokens:
-        tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', p_orig.lower()).split() if len(w) > 2]
+    supp_domain_desc, supp_segs = step2_check_supplier(s_name)
+
+    # Effective allowable industrial sector constraints
+    allowed_segments = mfr_segs or supp_segs
 
     # -----------------------------------------------------------------
-    # STEP 3 & 4: Hierarchical FTS5 Search & Ranking
+    # STEP 3: Google Product Search - Identify what type of product it is
+    # -----------------------------------------------------------------
+    identified_type, search_reason = step3_google_search_product_type(p_orig, m_name, m_part)
+
+    # -----------------------------------------------------------------
+    # STEP 4: Assign UNSPSC Code & Category According to Identified Product Type
     # -----------------------------------------------------------------
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
+    tokens = [w for w in re.sub(r'[^a-zA-Z0-9\s]', ' ', identified_type.lower()).split() if len(w) > 1]
     best_match = None
-    match_method = ""
     confidence = "Some Doubt"
+    match_method = ""
 
     if tokens:
-        # 4A. Exact Multi-Token Phrase Query
+        # 4A. Exact Multi-Token Match on FTS
         exact_q = ' '.join(f'"{t}"' for t in tokens)
         try:
             c.execute("""
@@ -378,8 +459,8 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             domain_filtered = [row for row in candidates if not allowed_segments or row[6][:2] in allowed_segments]
             if domain_filtered:
                 best_match = domain_filtered[0]
-                match_method = "Step 4: Multi-Token Exact FTS"
                 confidence = "No Doubt"
+                match_method = f"Step 4: Assigned via Google product type '{identified_type}' (Exact match)"
         except Exception:
             pass
 
@@ -399,8 +480,8 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                 domain_filtered = [row for row in candidates if not allowed_segments or row[6][:2] in allowed_segments]
                 if domain_filtered:
                     best_match = domain_filtered[0]
-                    match_method = "Step 4: Head Noun Compound FTS"
                     confidence = "No Doubt"
+                    match_method = f"Step 4: Assigned via Google compound noun '{tokens[-2]} {tokens[-1]}'"
             except Exception:
                 pass
 
@@ -421,12 +502,12 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                     domain_filtered = [row for row in candidates if not allowed_segments or row[6][:2] in allowed_segments]
                     if domain_filtered:
                         best_match = domain_filtered[0]
-                        match_method = "Step 4: Head Noun FTS"
-                        confidence = "Some Doubt" if not allowed_segments else "No Doubt"
+                        confidence = "No Doubt" if allowed_segments else "Some Doubt"
+                        match_method = f"Step 4: Assigned via Google core noun '{head_tok}'"
                 except Exception:
                     pass
 
-        # 4D. BM25 Ranked OR Fallback
+        # 4D. BM25 Ranked OR Query
         if not best_match and tokens:
             or_q = ' OR '.join(f'"{t}"' for t in tokens if len(t) > 2)
             if or_q:
@@ -443,19 +524,19 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                     domain_filtered = [row for row in candidates if not allowed_segments or row[6][:2] in allowed_segments]
                     if domain_filtered:
                         best_match = domain_filtered[0]
-                        match_method = "Step 4: BM25 Ranked FTS"
                         confidence = "Some Doubt"
+                        match_method = "Step 4: Assigned via domain-constrained BM25 search"
                     elif candidates:
                         best_match = candidates[0]
-                        match_method = "Step 4: BM25 Fallback FTS"
                         confidence = "Some Doubt"
+                        match_method = "Step 4: Assigned via ranked BM25 search"
                 except Exception:
                     pass
 
     conn.close()
 
     # -----------------------------------------------------------------
-    # STEP 5: Doubt Rollup Policy & Audit Generation
+    # STEP 5: Doubt Assessment & Conservative Rollup Policy
     # -----------------------------------------------------------------
     if best_match:
         comm_code, comm_name, class_code, class_name, fam_code, fam_name, seg_code, seg_name, _ = best_match
@@ -473,12 +554,14 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             assigned_cat = seg_name
             assigned_level = 'Segment (2-digit)'
 
-        mfr_info = f"MFR '{m_name}'" + (f" [MPN: {m_part}]" if m_part else "") + f" -> Sector: {domain_label or 'Domain-Checked'}" if m_name else "MFR: Not provided"
-        noun_info = f"Isolated terms: '{cleaned_query}'"
-        supp_info = f"Supplier '{s_name}'" + (f" [SKU: {s_part}]" if s_part else "") if s_name else "Supplier: Not provided"
-        tax_info = f"Taxonomy: Seg {seg_code} > Fam {fam_code} > Class {class_code} > Comm {comm_code}"
-        rollup_info = f"Rollup: {confidence} -> Assigned {assigned_level} '{assigned_code}' ({assigned_cat})"
-        step_audit_trail = f"[Step 1: OEM] {mfr_info} | [Step 2: Head Noun] {noun_info} | [Step 3: Supplier] {supp_info} | [Step 4: FTS Search] Comm {comm_code} ({comm_name}) | [Step 5: Rollup] {confidence} -> {assigned_level} {assigned_code}"
+        # Format Step Details
+        step1_detail = f"Manufacturer '{m_name}' manufactures: {mfr_domain_desc}" if m_name else "MFR: Not provided"
+        step2_detail = f"Supplier '{s_name}' supplies: {supp_domain_desc}" if s_name else "Supplier: Direct / Standard distribution"
+        step3_detail = f"Google Search verified product type: '{identified_type}'"
+        step4_detail = f"Assigned UNSPSC: Seg {seg_code} > Fam {fam_code} > Class {class_code} > Comm {comm_code} ({comm_name})"
+        step5_detail = f"Doubt Assessment: {confidence} -> Assigned {assigned_level} '{assigned_code}' ({assigned_cat})"
+
+        step_audit_trail = f"[Step 1: MFR] {step1_detail} | [Step 2: Supplier] {step2_detail} | [Step 3: Google Product Search] {step3_detail} | [Step 4: Taxonomy] {step4_detail} | [Step 5: Rollup] {step5_detail}"
 
         return {
             'assigned_code': assigned_code,
@@ -487,11 +570,11 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             'confidence': confidence,
             'match_method': match_method,
             'step_audit_trail': step_audit_trail,
-            'step1_detail': mfr_info,
-            'step2_detail': noun_info,
-            'step3_detail': supp_info,
-            'step4_detail': tax_info,
-            'step5_detail': rollup_info,
+            'step1_detail': step1_detail,
+            'step2_detail': step2_detail,
+            'step3_detail': step3_detail,
+            'step4_detail': step4_detail,
+            'step5_detail': step5_detail,
             'google_url': google_url,
             'commodity_code': comm_code,
             'commodity_name': comm_name,
@@ -503,14 +586,14 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
             'segment_name': seg_name
         }
 
-    # Fallback if totally unresolved
+    # Fallback if unresolved
     fallback_seg = list(allowed_segments)[0] + '000000' if allowed_segments else '53000000'
-    mfr_info = f"MFR '{m_name}'" if m_name else "MFR: Not provided"
-    noun_info = f"Unresolved description: '{p_orig}'"
-    supp_info = f"Supplier '{s_name}'" if s_name else "Supplier: Not provided"
-    tax_info = f"Taxonomy: Fallback Segment {fallback_seg}"
-    rollup_info = f"Rollup: Huge Doubt -> Assigned Segment (2-digit) '{fallback_seg}'"
-    step_audit_trail = f"[Step 1: OEM] {mfr_info} | [Step 2: Noun] {noun_info} | [Step 3: Supplier] {supp_info} | [Step 4: Unresolved] | [Step 5: Rollup] Huge Doubt -> Segment {fallback_seg}"
+    step1_detail = f"Manufacturer '{m_name}' manufactures: {mfr_domain_desc}" if m_name else "MFR: Not provided"
+    step2_detail = f"Supplier '{s_name}' supplies: {supp_domain_desc}" if s_name else "Supplier: Direct / Standard distribution"
+    step3_detail = f"Google Search: Unresolved description '{p_orig}'"
+    step4_detail = f"Taxonomy: Fallback Segment {fallback_seg}"
+    step5_detail = f"Doubt Assessment: Huge Doubt -> Assigned Segment (2-digit) '{fallback_seg}'"
+    step_audit_trail = f"[Step 1: MFR] {step1_detail} | [Step 2: Supplier] {step2_detail} | [Step 3: Google Search] {step3_detail} | [Step 4: Unresolved] | [Step 5: Rollup] Huge Doubt -> Segment {fallback_seg}"
 
     return {
         'assigned_code': fallback_seg,
@@ -519,11 +602,11 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
         'confidence': 'Huge Doubt',
         'match_method': 'Step 5: Fallback Segment',
         'step_audit_trail': step_audit_trail,
-        'step1_detail': mfr_info,
-        'step2_detail': noun_info,
-        'step3_detail': supp_info,
-        'step4_detail': tax_info,
-        'step5_detail': rollup_info,
+        'step1_detail': step1_detail,
+        'step2_detail': step2_detail,
+        'step3_detail': step3_detail,
+        'step4_detail': step4_detail,
+        'step5_detail': step5_detail,
         'google_url': google_url,
         'commodity_code': fallback_seg,
         'commodity_name': 'Unclassified',
@@ -558,7 +641,6 @@ def search_unspsc(query, limit=25):
         cursor.execute(sql, (fts_query, limit))
         results = [dict(row) for row in cursor.fetchall()]
 
-        # If AND query yielded too few results, fallback to OR query
         if len(results) < 5 and len(tokens) > 1:
             existing_codes = {r['commodity_code'] for r in results}
             or_query = ' OR '.join(f'"{t}"*' for t in tokens)

@@ -49,36 +49,36 @@
                 <div class="step">
                     <div class="step-num" style="background:#1B4F72;">1</div>
                     <div class="step-content">
-                        <h3>Step 1: OEM & Part # Verification (Domain Gating)</h3>
-                        <p><strong>OEM Truth:</strong> Resolves manufacturer brand identity and part number to lock the allowable industrial sectors, preventing cross-domain errors.</p>
+                        <h3>Step 1: Manufacturer Intelligence (What They Manufacture)</h3>
+                        <p><strong>OEM Profile:</strong> Checks the manufacturer name to determine what kinds of goods they manufacture, locking allowable industrial sectors.</p>
                     </div>
                 </div>
                 <div class="step">
                     <div class="step-num" style="background:#2874A6;">2</div>
                     <div class="step-content">
-                        <h3>Step 2: Semantic Head Noun Parsing</h3>
-                        <p><strong>Object Isolation:</strong> Discards transient modifiers (colors, sizes, packaging counts) using regex word boundaries to isolate the functional head noun.</p>
+                        <h3>Step 2: Supplier Intelligence (What They Supply)</h3>
+                        <p><strong>Distributor Profile:</strong> Checks the supplier name to determine their distribution catalog and supply channel context.</p>
                     </div>
                 </div>
                 <div class="step">
                     <div class="step-num" style="background:#3498DB;">3</div>
                     <div class="step-content">
-                        <h3>Step 3: Supplier & Distributor SKU Cross-Check</h3>
-                        <p><strong>Secondary Verification:</strong> Cross-checks distributor catalog context and SKU when OEM data is ambiguous or unlisted.</p>
+                        <h3>Step 3: Google Product Search & Identification</h3>
+                        <p><strong>Web Search Verification:</strong> Checks the product name and model/part # in Google search to identify what type of product it actually is.</p>
                     </div>
                 </div>
                 <div class="step">
                     <div class="step-num" style="background:#8E44AD;">4</div>
                     <div class="step-content">
-                        <h3>Step 4: Hierarchical Taxonomy Traversal</h3>
-                        <p><strong>4-Tier Mapping:</strong> Maps through Segment (2-digit) &rarr; Family (4-digit) &rarr; Class (6-digit) &rarr; Commodity (8-digit) across 71,500+ records.</p>
+                        <h3>Step 4: UNSPSC Taxonomy Mapping</h3>
+                        <p><strong>Taxonomy Assignment:</strong> Assigns the UNSPSC code and category according to the identified product type and sector constraints.</p>
                     </div>
                 </div>
                 <div class="step">
                     <div class="step-num" style="background:#27AE60;">5</div>
                     <div class="step-content">
                         <h3>Step 5: Strict Doubt & Rollup Policy</h3>
-                        <p><strong>Doubt Gating:</strong> No Doubt &rarr; <strong>Commodity (8-digit)</strong> &bull; Some Doubt &rarr; <strong>Class (6-digit)</strong> / Family &bull; Huge Doubt &rarr; <strong>Segment (2-digit)</strong></p>
+                        <p><strong>Doubt Gating:</strong> No Doubt &rarr; <strong>Commodity (8-digit)</strong> &bull; Some Doubt &rarr; <strong>Class (6-digit)</strong> &bull; Huge Doubt &rarr; <strong>Segment (2-digit)</strong></p>
                     </div>
                 </div>
             </div>
