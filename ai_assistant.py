@@ -183,21 +183,27 @@ Return JSON only, no markdown formatting, no other text.
     return None
 
 
-def cross_reference_with_70k_database(ai_result: Dict[str, Any], allowed_segments: Optional[set] = None) -> Optional[Tuple[Dict[str, Any], str]]:
+def cross_reference_with_70k_database(ai_result: Optional[Dict[str, Any]] = None, allowed_segments: Optional[set] = None, suggested_code: str = '', suggested_cat: str = '', product_type: str = '', keywords: Optional[list] = None) -> Optional[Dict[str, Any]]:
     """
     Cross-references the AI's proposal against the 71,502 official UNSPSC records in SQLite:
     1. First checks if AI's suggested_unspsc_code exists in unspsc_items.
     2. If found and matches category intent, verifies it.
     3. If missing or misaligned, searches unspsc_fts using the AI's identified product_type and search_keywords.
-    Returns (db_row_dict, verification_note).
+    Returns dict: {'matched': True, 'record': dict(row), 'resolution_note': note} or None.
     """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
 
-    suggested_code = str(ai_result.get('suggested_unspsc_code', '')).strip()
-    product_type = str(ai_result.get('product_type', '')).strip()
-    keywords = ai_result.get('search_keywords', [])
+    if isinstance(ai_result, dict):
+        suggested_code = suggested_code or str(ai_result.get('suggested_unspsc_code', ''))
+        product_type = product_type or str(ai_result.get('product_type', ''))
+        if keywords is None:
+            keywords = ai_result.get('search_keywords', [])
+
+    suggested_code = str(suggested_code or '').strip()
+    product_type = str(product_type or '').strip()
+    keywords = keywords or []
 
     # 1. Direct validation of suggested code against 71,502 database
     if suggested_code and len(suggested_code) >= 6:
@@ -211,7 +217,11 @@ def cross_reference_with_70k_database(ai_result: Dict[str, Any], allowed_segment
         row = c.fetchone()
         if row:
             conn.close()
-            return dict(row), f"Directly validated against 71,502 records: Verified Code '{suggested_code}' ({row['commodity_name']})"
+            return {
+                'matched': True,
+                'record': dict(row),
+                'resolution_note': f"Directly validated against 71,502 records: Verified Code '{suggested_code}' ({row['commodity_name']})"
+            }
 
     # 2. Search SQLite FTS using AI's identified product type
     if product_type:
@@ -232,7 +242,11 @@ def cross_reference_with_70k_database(ai_result: Dict[str, Any], allowed_segment
             if filtered:
                 best = filtered[0]
                 conn.close()
-                return dict(best), f"Cross-referenced AI product type '{product_type}' against 71,502 records -> Matched '{best['commodity_code']}'"
+                return {
+                    'matched': True,
+                    'record': dict(best),
+                    'resolution_note': f"Cross-referenced AI product type '{product_type}' against 71,502 records -> Matched '{best['commodity_code']}'"
+                }
 
             # Try compound noun
             if len(tokens) >= 2:
@@ -250,7 +264,11 @@ def cross_reference_with_70k_database(ai_result: Dict[str, Any], allowed_segment
                 if filtered:
                     best = filtered[0]
                     conn.close()
-                    return dict(best), f"Cross-referenced AI compound noun '{tokens[-2]} {tokens[-1]}' -> Matched '{best['commodity_code']}'"
+                    return {
+                        'matched': True,
+                        'record': dict(best),
+                        'resolution_note': f"Cross-referenced AI compound noun '{tokens[-2]} {tokens[-1]}' -> Matched '{best['commodity_code']}'"
+                    }
 
     # 3. Fallback to keywords
     if keywords and isinstance(keywords, list):
@@ -270,7 +288,11 @@ def cross_reference_with_70k_database(ai_result: Dict[str, Any], allowed_segment
             if filtered:
                 best = filtered[0]
                 conn.close()
-                return dict(best), f"Cross-referenced AI keywords against 71,502 records -> Matched '{best['commodity_code']}'"
+                return {
+                    'matched': True,
+                    'record': dict(best),
+                    'resolution_note': f"Cross-referenced AI keywords against 71,502 records -> Matched '{best['commodity_code']}'"
+                }
 
     conn.close()
     return None
