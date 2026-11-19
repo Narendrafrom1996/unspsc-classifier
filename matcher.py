@@ -1059,6 +1059,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
     confidence = "No Doubt"
     match_method = ""
     identified_type = primary or p_orig
+    ai_thinking_note = ""
 
     # -----------------------------------------------------------------
     # OPTIONAL: AI ASSISTANT (Gemini / DeepSeek / ChatGPT) + 70K CROSS-REFERENCING
@@ -1076,6 +1077,7 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
                 provider=ai_provider
             )
             if ai_res:
+                ai_thinking_note = ai_res.get('deep_thinking_analysis', '')
                 if ai_res.get('mfr_goods'):
                     mfr_domain_desc = f"{ai_res['mfr_goods']} (AI Verified)"
                 if ai_res.get('supplier_goods'):
@@ -1297,7 +1299,10 @@ def match_product(product_name, mfr_name='', mfr_part='', supplier_name='', supp
 
         step1_detail = f"Manufacturer '{m_name}' manufactures: {mfr_domain_desc}" if m_name else "MFR: Not provided"
         step2_detail = f"Supplier '{s_name}' supplies: {supp_domain_desc}" if s_name else "Supplier: Direct / Standard distribution"
-        step3_detail = f"Product Search / AI verified product type: '{identified_type}'"
+        if ai_thinking_note:
+            step3_detail = f"Deep AI Analysis: '{ai_thinking_note}' -> Identified Type: '{identified_type}'"
+        else:
+            step3_detail = f"Product Search / AI verified product type: '{identified_type}'"
         step4_detail = f"Assigned 8-Digit UNSPSC: Seg {seg_code} > Fam {fam_code} > Class {class_code} > Comm {comm_code} ({comm_name})"
         step5_detail = f"Audit Status: {confidence} -> Assigned {assigned_level} '{assigned_code}' ({assigned_cat})"
 

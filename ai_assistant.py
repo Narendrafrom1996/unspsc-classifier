@@ -126,10 +126,11 @@ def call_openai_compatible(api_key: str, prompt: str, base_url: str = "https://a
 def query_ai_for_product(product_name: str, mfr_name: str = '', mfr_part: str = '', supplier_name: str = '', supplier_part: str = '', api_key: str = '', provider: str = '') -> Optional[Dict[str, Any]]:
     """
     Asks the AI (Gemini, DeepSeek, or ChatGPT) to:
-    1. Determine what the manufacturer manufactures.
-    2. Determine what the supplier supplies.
-    3. Identify what type of product this is (resolving model numbers and part numbers).
-    4. Suggest the candidate UNSPSC code, category, and core keywords.
+    1. Read the COMPLETE product description without rushing.
+    2. Disambiguate subtle taxonomic boundaries (e.g., training videos vs kits, surgical vs industrial masks).
+    3. Determine what the manufacturer manufactures.
+    4. Determine what the supplier supplies.
+    5. Identify exact physical product type and suggest the official UNSPSC code.
     """
     if not provider or not api_key:
         det_prov, det_key = get_configured_ai_provider()
@@ -140,24 +141,38 @@ def query_ai_for_product(product_name: str, mfr_name: str = '', mfr_part: str = 
         return None
 
     prompt = f"""
-You are an expert in UNSPSC (United Nations Standard Products and Services Code) procurement cataloging.
-Analyze the following item:
-- Product Name: "{product_name}"
+You are a senior master specialist in UNSPSC (United Nations Standard Products and Services Code) procurement cataloging and taxonomic classification.
+Your mandate is PERFECTION, DEEP THINKING, and RIGOROUS PRECISION over haste or guesswork.
+
+Please thoroughly analyze the following item:
+- Complete Product Description: "{product_name}"
 - Manufacturer Name: "{mfr_name}"
 - Manufacturer Part # (MPN): "{mfr_part}"
-- Supplier Name: "{supplier_name}"
+- Supplier / Distributor Name: "{supplier_name}"
 - Supplier Part # (SKU): "{supplier_part}"
 
-Please respond ONLY with a valid JSON object with the following keys:
+Execution Steps (Think carefully through each step before arriving at the conclusion):
+1. READ THE COMPLETE PRODUCT NAME: Parse every word from beginning to end. Separate commercial brand names, packaging quantities (e.g. 50/bx, case, each, pack), technical qualifiers, from the true physical noun.
+2. DISAMBIGUATE CLOSE TAXONOMIC BOUNDARIES:
+   - Videos / DVDs vs Training Kits vs Handbooks / Booklets (e.g., DVD training modules = 46211502 Workplace safety training video; physical multi-item kits = 46211501 Workplace safety training kit; printed guides = 46211503 Training manual/handbook).
+   - Face Masks & Respirators (e.g., Anesthesia/laryngeal mask = 42271607; Medical/surgical isolation mask = 42131606; Industrial protective dust/N95 mask = 46182001; PAPR = 46182002; Face shield = 46181702).
+   - Gloves (e.g., Medical exam glove = 42132203; Heat protective glove = 46181508; General industrial protective glove = 46181504; Glove dispenser/organizer = 46181553).
+   - Fall Protection (e.g., Harness = 46182306; Lanyard/Lifeline = 46182301; Anchorage clamp = 46182304; Tripod = 46182305; Winch = 24101616).
+   - Lab timers & stopwatches (41111949) vs Computer hardware.
+3. IDENTIFY EXACT OFFICIAL UNSPSC COMMODITY: Determine the exact 8-digit Commodity code or 6-digit Class code and the official UNSPSC title.
+
+Respond ONLY with a valid JSON object with the following structure:
 {{
+    "deep_thinking_analysis": "Comprehensive step-by-step reasoning explaining the complete product dissection, manufacturer context, and why this specific commodity is the correct classification",
     "mfr_goods": "Brief summary of what kind of goods this manufacturer makes",
     "supplier_goods": "Brief summary of what this supplier distributes",
-    "product_type": "Exact physical product type (e.g. 'Notebook computers', 'HPLC column', 'Metal statue or figurine', 'Suction catheter', 'Ballpoint pen')",
-    "suggested_unspsc_code": "8-digit commodity code or 6-digit class code if known (e.g. 43211503, 56141703, 41115709)",
+    "product_type": "Exact physical product type (e.g. 'Workplace safety training video', 'Anesthesia masks', 'High pressure liquid chromatography HPLC column')",
+    "suggested_unspsc_code": "8-digit commodity code (e.g. 46211502, 42271607, 46181802)",
     "suggested_category": "Official UNSPSC category name",
-    "search_keywords": ["keyword1", "keyword2", "keyword3"]
+    "search_keywords": ["keyword1", "keyword2", "keyword3"],
+    "confidence_assessment": "High / Medium / Low"
 }}
-Return JSON only, no markdown formatting, no other text.
+Return JSON only, no markdown formatting, no surrounding text.
 """
     raw_response = None
     if provider.lower() == 'gemini':
@@ -167,7 +182,8 @@ Return JSON only, no markdown formatting, no other text.
     elif provider.lower() == 'groq':
         raw_response = call_openai_compatible(api_key, prompt, base_url="https://api.groq.com/openai/v1", model="llama-3.1-8b-instant")
     elif provider.lower() in ('openai', 'chatgpt'):
-        raw_response = call_openai_compatible(api_key, prompt, base_url="https://api.openai.com/v1", model="gpt-4o-mini")
+        openai_model = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+        raw_response = call_openai_compatible(api_key, prompt, base_url="https://api.openai.com/v1", model=openai_model)
 
     if not raw_response:
         return None
