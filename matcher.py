@@ -190,6 +190,32 @@ MANUFACTURER_PROFILES: Dict[str, Tuple[str, Set[str]]] = {
     'bouton': ('Safety Spectacles, Full Frame Safety Glasses & Eyewear', {'46'}),
     'mcr safety': ('Safety Glasses, Cut-Resistant Gloves & Protective Apparel', {'46'}),
     'bullard': ('Hard Hats, Thermal Imaging Cameras & Supplied Air Respirators', {'46'}),
+
+    # Apparel, Footwear, Workwear & Consumer Products (Segment 53, 60, 42)
+    'under armour': ('Athletic Apparel, Compression Tops, Shorts, Pants & Sportswear', {'53'}),
+    'under armour apparel': ('Athletic Apparel, Compression Tops, Shorts, Pants & Sportswear', {'53'}),
+    'red kap': ('Industrial Workwear, Technician Shirts, Uniforms & Work Pants', {'53'}),
+    'wrangler': ('Workwear, Technician Pants, Jeans, Heavy-Duty Slacks & Shirts', {'53'}),
+    'wrangler riggs workwear': ('Workwear, Technician Pants, Jeans, Heavy-Duty Slacks & Shirts', {'53'}),
+    'puma': ('Athletic Footwear, Running Sneakers, Shorts, Tracksuits & Sportswear', {'53'}),
+    'secret wish': ('Women Maternity Nighties, Sleepwear, Robes & Nightshirts', {'53'}),
+    'posefree': ('Women Undergarments, Brassieres, Lingerie & Bras', {'53'}),
+    'aegend': ('Sporting Goods, Sun Protection Arm Sleeves, Outdoor Accessories', {'53', '46'}),
+    'fdty': ('Compression Therapy Sleeves, Calf Compression Supports & Bandages', {'42', '53'}),
+    'the fashion factory': ('Boys Clothing Sets, Sweatshirts, Kids Pants & Apparel', {'53'}),
+    'pujane': ('Cushioned Crew Cotton Socks, Athletic Hosiery & Footwear', {'53'}),
+    'lionvii': ('Men Stretch Ratchet Belts, Leather Belts & Buckles', {'53'}),
+    'ikadex': ('Women Muslim Abayas, Maxi Dresses, Kaftan Robes & Cardigans', {'53'}),
+    'yardhobi': ('Women Scarves, Shawls, Hijab Wraps & Neckwear Accessories', {'53'}),
+    'navashya consumer products': ('Cloth Diapers, Reusable Infant Care Products & Liners', {'53'}),
+    'wisfunlly': ('Synthetic Hair Wigs, Men Hairpieces & Wigs', {'53', '60'}),
+    'nalacal': ('Cosplay Halloween Wigs, Fancy Dress Costumes & Hairpieces', {'60', '53'}),
+    'terrifi': ('Women Synthetic Hair Wigs, Wavy Wigs & Hairpieces', {'53', '60'}),
+    'tazweeq': ('Women Curly Afro Wigs, Synthetic Hairpieces & Wigs', {'53', '60'}),
+    'coloplast': ('Urological Supplies, Intermittent Urinary Catheters & Ostomy Care', {'42'}),
+    'pennine healthcare': ('Medical Suction Catheters, Mucus Extractors & Patient Tubes', {'42'}),
+    'vega': ('Motorcycle Full Face Helmets, Crash Helmets & Head Protection', {'46'}),
+    'the safety zone': ('Disposable Bouffant Caps, Protective Apparel & Gloves', {'42', '46'}),
 }
 
 SUPPLIER_PROFILES: Dict[str, Tuple[str, Set[str]]] = {
@@ -347,6 +373,32 @@ def expand_procurement_abbreviations(text: str) -> str:
     return s
 
 COMPLETE_NAME_RULES = [
+    # Apparel, Workwear & Consumer Products
+    (r'\b(t-?shirts?|tee\s+shirts?)\b', '53103001', 'Mens tshirts'),
+    (r'\b(technician\s+shirts?|work\s+shirts?|uniform\s+shirts?|mens?\s+shirts?)\b', '53101602', 'Mens shirts'),
+    (r'\b(technician\s+pants?|workwear\s+.*pants?|work\s+pants?|riggs.*pant)\b', '53101502', 'Mens slacks or trousers or shorts'),
+    (r'\b(individualrise\s+shorts|athletic\s+shorts?|running\s+shorts?|gym\s+shorts?|swim\s+shorts?)\b', '53101502', 'Mens slacks or trousers or shorts'),
+    (r'\b(nighty|nightie|nightgown|sleepwear|pajamas?|nightshirts?)\b', '53102604', 'Womens pajamas or nightshirts or robes'),
+    (r'\b(bras?|brassieres?|sports\s+bra|jelly\s+bras?)\b', '53102304', 'Brassieres'),
+    (r'\b(ratchet\s+(men\s+)?belts?|stretch\s+belts?|leather\s+belts?|dress\s+belts?|automatic\s+buckle.*belt|men\s+belts?)\b', '53102501', 'Belts or suspenders'),
+    (r'\b(abayas?|kaftan|caftan|maxi\s+dress|dresses)\b', '53102002', 'Womens dresses or skirts or saris or kimonos'),
+    (r'\b(scarf|scarves|shawls?|hijabs?|mufflers?)\b', '53102502', 'Ties or scarves or mufflers'),
+    (r'\b(cloth\s+diapers?|infant\s+diapers?|baby\s+diapers?)\b', '53102305', 'Infant diapers'),
+    (r'\b(handcuffs.*costume|for\s+costumes?|costume\s+handcuffs?|cosplay.*wig|costumes?\s+or\s+accessories)\b', '60141401', 'Costumes or accessories'),
+    (r'\b(wigs?|hairpieces?|synthetic\s+hair\s+wig)\b', '53131602', 'Hair care supplies'),
+    (r'\b(tracksuits?|track\s+suit|sweatsuits?|athletic\s+suit)\b', '53102902', 'Mens athletic wear'),
+    (r'\b(sweatshirt.*pant|clothing\s+set|boys.*clothing\s+set|boys.*pant.*set)\b', '53102903', 'Boys athletic wear'),
+    (r'\b(crew\s+socks?|cotton\s+socks?|cushioned.*socks?|athletic\s+socks?)\b', '53102402', 'Socks'),
+    (r'\b(unisex-kids\s+sneakers?|jr\s+unisex-kids|junior\s+sneakers?|kids\s+sneakers?|boys\s+sneakers?)\b', '53111903', 'Boys athletic footwear'),
+    (r'\b(sneakers?|running\s+shoes?|athletic\s+shoes?|tennis\s+shoes?|st\s+runner)\b', '53111901', 'Mens athletic footwear'),
+    (r'\b(calf\s+compression\s+sleeve|compression\s+leg\s+sleeve|varicose\s+vein\s+sleeve|shin\s+splint\s+compression)\b', '42142802', 'Compression bandages'),
+    (r'\b(cooling\s+arm\s+sleeves?|sun\s+protection\s+arm\s+sleeves?|sun\s+sleeves)\b', '53102508', 'Armbands'),
+    (r'\b(full\s+face\s+helmet|motorcycle\s+helmet|crash\s+helmet)\b', '46181701', 'Safety helmets'),
+    (r'\b(speedicath|intermittent.*catheter|urinary\s+catheter)\b', '42142701', 'Suprapubic urinary catheters'),
+    (r'\b(mucus\s+extractor)\b', '42272011', 'Suction catheters or its accessories'),
+    (r'\b(bouffant\s+caps?)\b', '42131604', 'Medical staff bouffant caps'),
+    (r'\b(luer\s*-?\s*lok|luer\s*-?\s*lock)\b', '42142608', 'Medical syringe without needle'),
+
     # Flip charts & booklets
     (r'\b(safety\s*flip\s*chart|flip\s*chart)\b', '55101520', 'Instruction sheets or booklets'),
 
@@ -602,7 +654,7 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('46181553', 'Protective wear dispenser', 'Safety apparel', 'Personal safety and protection')
 
     # 10. Gloves & Mitts
-    if any(k in s for k in ['glove', 'mitt', 'derma thin', 'n-dex', 'ultrasense', 'xceed', 'semperguard', 'nitri-solve', 'zorb-it', 'd/flex', 'neox', 'crusader', 'polymed', 'dextera', 'hot mill', 'black latex', 'natural rub latex', 'nmâ']):
+    if any(k in s for k in ['glove', 'derma thin', 'n-dex', 'ultrasense', 'xceed', 'semperguard', 'nitri-solve', 'zorb-it', 'd/flex', 'neox', 'crusader', 'polymed', 'dextera', 'hot mill', 'black latex', 'natural rub latex', 'nmâ']) or re.search(r'\bmitts?\b', s):
         if any(k in s for k in ['exam', 'nitriderm', 'flex-vinyl', 'sterile pair']):
             return ('42132203', 'Medical exam or non surgical gloves', 'Medical gloves and accessories', 'Medical apparel and textiles')
         if any(k in s for k in ['thermal', 'heat', 'high temperature', 'ove glove', 'bbq', 'hot mill', 'pbi thermal', 'zetex']):
@@ -668,7 +720,7 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('46181525', 'Protective boot or shoe covers', 'Safety apparel', 'Personal safety and protection')
 
     # 17. Gloves & Mitts (second pass for additional catalog aliases)
-    if any(k in s for k in ['glove', 'mitt', 'derma thin', 'n-dex', 'ultrasense', 'xceed', 'semperguard', 'nitri-solve', 'zorb-it', 'd/flex', 'neox', 'crusader', 'polymed', 'dextera', 'hot mill', 'black latex', 'natural rub latex', 'nmâ', 'ultra sense', 'latex exam']):
+    if any(k in s for k in ['glove', 'derma thin', 'n-dex', 'ultrasense', 'xceed', 'semperguard', 'nitri-solve', 'zorb-it', 'd/flex', 'neox', 'crusader', 'polymed', 'dextera', 'hot mill', 'black latex', 'natural rub latex', 'nmâ', 'ultra sense', 'latex exam']) or re.search(r'\bmitts?\b', s):
         if any(k in s for k in ['exam', 'nitriderm', 'flex-vinyl', 'sterile pair', 'latex exam']):
             return ('42132203', 'Medical exam or non surgical gloves', 'Medical gloves and accessories', 'Medical apparel and textiles')
         if any(k in s for k in ['thermal', 'heat', 'high temperature', 'ove glove', 'bbq', 'hot mill', 'pbi thermal', 'zetex']):
@@ -690,11 +742,11 @@ def extract_batch2_domain_mapping(s_raw: str) -> Optional[Tuple[str, str, str, s
         return ('46181503', 'Protective work suits', 'Safety apparel', 'Personal safety and protection')
     if 'apron' in s:
         return ('46181501', 'Protective aprons', 'Safety apparel', 'Personal safety and protection')
-    if any(k in s for k in ['rain jacket', 'rainwear', 'parka', 'sweatshirt', 'hi-vis']):
+    if any(k in s for k in ['rain jacket', 'rainwear', 'parka', 'hi-vis']):
         return ('46181543', 'Waterproof jacket or raincoat', 'Safety apparel', 'Personal safety and protection')
     if 'safety vest' in s:
         return ('46181531', 'Safety vests', 'Safety apparel', 'Personal safety and protection')
-    if 'sleeve' in s:
+    if re.search(r'\b(protective\s+arm\s+sleeves?|cut\s+resistant\s+sleeves?)\b', s) or ('sleeve' in s and not any(k in s for k in ['short-sleeve', 'short sleeve', 'long sleeve', 'shirt', 't-shirt', 'pullover', 'tracksuit', 'sweatshirt', 'dress', 'gown'])):
         return ('46181541', 'Protective arm sleeve', 'Safety apparel', 'Personal safety and protection')
     if 'hood' in s:
         return ('46181710', 'Protective hood', 'Face and head protection', 'Personal safety and protection')
